@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: kidscontent-api
+    env: python
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+      apt-get update -qq && apt-get install -y ffmpeg fonts-dejavu
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: YOUTUBE_CLIENT_ID
+        sync: false
+      - key: YOUTUBE_CLIENT_SECRET
+        sync: false
+      - key: YOUTUBE_REFRESH_TOKEN
+        sync: false
+    healthCheckPath: /health
