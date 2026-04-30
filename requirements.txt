@@ -4,3 +4,4 @@ requests==2.31.0
 edge-tts==6.1.9
 pydantic==1.10.13
 python-multipart==0.0.6
+anyio==3.7.1
