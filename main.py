@@ -1,6 +1,6 @@
 """
-KidsContent.ai — FastAPI Backend v2.1
-Fixed for Render.com free tier (Python 3.11, Pydantic v1)
+KidsContent.ai — FastAPI Backend v2.2
+Compatible with Python 3.14 + Pydantic v2
 """
 
 import os, json, time, random, asyncio, subprocess, re, shutil
@@ -11,7 +11,7 @@ import requests
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # ── ENV VARS ──────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -20,7 +20,7 @@ YOUTUBE_CLIENT_SECRET = os.environ.get("YOUTUBE_CLIENT_SECRET", "")
 YOUTUBE_REFRESH_TOKEN = os.environ.get("YOUTUBE_REFRESH_TOKEN", "")
 
 # ── APP ───────────────────────────────────────────────────────────────────────
-app = FastAPI(title="KidsContent.ai API", version="2.1")
+app = FastAPI(title="KidsContent.ai API", version="2.2")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,7 +32,8 @@ WORK_DIR = Path("/tmp/kidscontent")
 WORK_DIR.mkdir(exist_ok=True)
 LOG_FILE = WORK_DIR / "upload_log.json"
 
-pipeline_status = {
+# Use plain dict for status — avoids ALL pydantic issues
+pipeline_status: dict = {
     "running": False,
     "step": "",
     "step_index": 0,
@@ -52,7 +53,6 @@ NICHES = {
             "farm animals waking up", "raindrops on umbrellas", "stars at bedtime",
             "dinosaurs going to school", "ocean fish dancing", "bunnies in garden",
             "train through colorful tunnels", "butterflies learning to fly",
-            "bears making honey sandwiches", "monkeys in a jungle",
         ],
     },
     "abc_learning": {
@@ -61,9 +61,9 @@ NICHES = {
         "music_prompt": "gentle educational xylophone children tune",
         "image_style": "cute kawaii flat design educational illustration pastel colors",
         "themes": [
-            "letter A with apples", "letter B with butterflies", "counting 1 to 10",
+            "letter A with apples", "counting 1 to 10",
             "learning colors rainbow", "shapes circle square triangle",
-            "days of the week", "months of the year", "alphabet A to Z adventure",
+            "days of the week", "alphabet A to Z adventure",
         ],
     },
     "bedtime_story": {
@@ -74,7 +74,6 @@ NICHES = {
         "themes": [
             "cloud afraid of the dark", "sleepy moon wants to play",
             "tiny star learning to shine", "bunny lost his blanket",
-            "elephant finding a dream", "owl guiding fireflies",
         ],
     },
     "animal_facts": {
@@ -83,11 +82,16 @@ NICHES = {
         "music_prompt": "adventurous upbeat nature kids documentary music",
         "image_style": "vivid nature photography illustration detailed animal lush environment",
         "themes": [
-            "amazing elephant facts", "funny penguin facts", "incredible dolphin facts",
-            "surprising octopus facts", "cute red panda facts", "amazing cheetah speed",
+            "amazing elephant facts", "funny penguin facts",
+            "incredible dolphin facts", "cute red panda facts",
         ],
     },
 }
+
+
+# ── PYDANTIC MODELS (v2 compatible) ──────────────────────────────────────────
+class RunRequest(BaseModel):
+    enabled_niches: Optional[List[str]] = Field(default=None)
 
 
 # ── STEP 1: CONTENT GENERATION ────────────────────────────────────────────────
@@ -104,23 +108,24 @@ def generate_content(niche_key: str) -> dict:
     niche = NICHES[niche_key]
     theme = random.choice(niche["themes"])
 
-    prompts = {
+    content_prompts = {
         "nursery_rhyme": f"Write an ORIGINAL nursery rhyme for toddlers (age 1-5) about: {theme}. 4 verses x 4 lines, AABB rhyme, catchy chorus, fun sound effects.",
         "abc_learning": f"Write an original educational song for toddlers (age 2-5) about: {theme}. Fun intro + 3 verses + repeating chorus.",
         "bedtime_story": f"Write a gentle 60-second bedtime story for children (age 2-6) about: {theme}. Calm, peaceful, happy ending, under 200 words.",
         "animal_facts": f"Write exciting animal facts for kids (age 4-8) about: {theme}. Hook + 4 facts + wow closing. Under 180 words.",
     }
 
-    seo_block = """
-Return ONLY valid JSON (no markdown, no backticks):
+    full_prompt = content_prompts[niche_key] + """
+
+Also generate YouTube Shorts SEO. Return ONLY valid JSON with NO markdown fences:
 {
-  "title": "max 70 chars with emoji",
+  "title": "max 70 chars with emoji at start",
   "content": "full script here",
-  "description": "150-200 word YouTube description with hook in first 2 sentences",
+  "description": "150-200 word YouTube description",
   "tags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8"],
   "hashtags": "#Shorts #Tag2 #Tag3 #Tag4 #Tag5",
-  "scenes": ["scene1 15 words max","scene2","scene3","scene4","scene5"],
-  "theme": "theme name"
+  "scenes": ["scene1 description max 15 words","scene2","scene3","scene4","scene5"],
+  "theme": "theme name here"
 }"""
 
     resp = requests.post(
@@ -133,7 +138,7 @@ Return ONLY valid JSON (no markdown, no backticks):
         json={
             "model": "claude-sonnet-4-20250514",
             "max_tokens": 1500,
-            "messages": [{"role": "user", "content": prompts[niche_key] + seo_block}],
+            "messages": [{"role": "user", "content": full_prompt}],
         },
         timeout=90,
     )
@@ -141,6 +146,7 @@ Return ONLY valid JSON (no markdown, no backticks):
         raise Exception(f"Claude API error {resp.status_code}: {resp.text[:200]}")
 
     raw = resp.json()["content"][0]["text"].strip()
+    # Strip any markdown fences
     raw = re.sub(r"^```[a-z]*\n?", "", raw).rstrip("`").strip()
     data = json.loads(raw)
     data["niche_key"] = niche_key
@@ -149,7 +155,8 @@ Return ONLY valid JSON (no markdown, no backticks):
 
 
 # ── STEP 2: EDGE TTS VOICE ────────────────────────────────────────────────────
-async def _tts_async(text: str, voice: str, rate: str, pitch: str, audio_out: str, srt_out: str):
+async def _tts_async(text: str, voice: str, rate: str, pitch: str,
+                     audio_out: str, srt_out: str):
     import edge_tts
     comm = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
     sub = edge_tts.SubMaker()
@@ -174,7 +181,7 @@ def generate_voice(content: str, niche: dict, audio_path: str, srt_path: str):
     ))
 
 
-# ── STEP 3: SCENE IMAGES (Pollinations.AI) ───────────────────────────────────
+# ── STEP 3: SCENE IMAGES ─────────────────────────────────────────────────────
 def generate_scene_image(scene: str, style: str, output_path: str) -> bool:
     prompt = f"{scene}, {style}, no text, no watermarks, vertical 9:16"
     encoded = requests.utils.quote(prompt)
@@ -188,7 +195,7 @@ def generate_scene_image(scene: str, style: str, output_path: str) -> bool:
             Path(output_path).write_bytes(r.content)
             return True
     except Exception as e:
-        print(f"Image generation failed: {e}")
+        print(f"Image gen failed: {e}")
     return False
 
 
@@ -201,7 +208,7 @@ def build_scene_clip(scene: str, style: str, duration: float, output_path: str) 
     kb_effects = [
         "zoompan=z='zoom+0.0015':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
         "zoompan=z='if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
-        "zoompan=z='zoom+0.001':x='min(max(0,iw/2-(iw/zoom/2)+5*on),iw-iw/zoom)':y='ih/2-(ih/zoom/2)'",
+        "zoompan=z='zoom+0.001':x='min(max(0,iw/2-(iw/zoom/2)+4*on),iw-iw/zoom)':y='ih/2-(ih/zoom/2)'",
     ]
     effect = random.choice(kb_effects)
     cmd = [
@@ -229,30 +236,28 @@ def generate_music(music_prompt: str, music_path: str) -> bool:
             Path(music_path).write_bytes(r.content)
             return True
     except Exception as e:
-        print(f"Music generation failed: {e}")
+        print(f"Music gen failed: {e}")
     return False
 
 
-# ── STEP 5: GET AUDIO DURATION ────────────────────────────────────────────────
+# ── UTILITIES ─────────────────────────────────────────────────────────────────
 def get_duration(path: str) -> float:
     try:
-        probe = subprocess.run(
+        r = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration",
              "-of", "default=noprint_wrappers=1:nokey=1", path],
             capture_output=True, text=True, timeout=30,
         )
-        return float(probe.stdout.strip())
+        return float(r.stdout.strip())
     except Exception:
         return 10.0
 
 
-# ── STEP 6: ASSEMBLE FINAL VIDEO ─────────────────────────────────────────────
 def srt_to_drawtext(srt_path: str) -> Optional[str]:
     try:
         content = Path(srt_path).read_text(encoding="utf-8")
     except Exception:
         return None
-
     filters = []
     for block in re.split(r"\n\n+", content.strip()):
         lines = block.strip().split("\n")
@@ -286,16 +291,16 @@ def _t2s(t: str) -> float:
     return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
 
 
-def assemble_video(scene_clips: list, voice_path: str, music_path: Optional[str],
-                   srt_path: str, output_path: str):
+# ── STEP 5: ASSEMBLE FINAL VIDEO ─────────────────────────────────────────────
+def assemble_video(scene_clips: list, voice_path: str,
+                   music_path: Optional[str], srt_path: str, output_path: str):
     ts = str(int(time.time()))
 
-    # 1 — concat scene clips
+    # Concat clips
     concat_txt = str(WORK_DIR / f"concat_{ts}.txt")
     with open(concat_txt, "w") as f:
         for c in scene_clips:
             f.write(f"file '{c}'\n")
-
     concat_out = str(WORK_DIR / f"concat_{ts}.mp4")
     subprocess.run(
         ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_txt,
@@ -303,7 +308,7 @@ def assemble_video(scene_clips: list, voice_path: str, music_path: Optional[str]
         capture_output=True, timeout=120,
     )
 
-    # 2 — trim to voice duration
+    # Trim to voice duration
     voice_dur = min(get_duration(voice_path) + 0.5, 59.0)
     trimmed = str(WORK_DIR / f"trimmed_{ts}.mp4")
     subprocess.run(
@@ -313,7 +318,7 @@ def assemble_video(scene_clips: list, voice_path: str, music_path: Optional[str]
         capture_output=True, timeout=180,
     )
 
-    # 3 — burn subtitles
+    # Burn subtitles
     sub_filter = srt_to_drawtext(srt_path)
     subbed = str(WORK_DIR / f"subbed_{ts}.mp4")
     if sub_filter:
@@ -323,12 +328,11 @@ def assemble_video(scene_clips: list, voice_path: str, music_path: Optional[str]
              "-pix_fmt", "yuv420p", subbed],
             capture_output=True, timeout=300,
         )
-        if r.returncode != 0:
-            subbed = trimmed
+        subbed = subbed if r.returncode == 0 else trimmed
     else:
         subbed = trimmed
 
-    # 4 — mix audio
+    # Mix audio
     if music_path and Path(music_path).exists():
         filt = (
             "[1:a]volume=1.4[voice];"
@@ -355,7 +359,7 @@ def assemble_video(scene_clips: list, voice_path: str, music_path: Optional[str]
         )
 
 
-# ── STEP 7: YOUTUBE UPLOAD ────────────────────────────────────────────────────
+# ── STEP 6: YOUTUBE UPLOAD ────────────────────────────────────────────────────
 def get_yt_token() -> str:
     r = requests.post("https://oauth2.googleapis.com/token", data={
         "client_id": YOUTUBE_CLIENT_ID,
@@ -371,7 +375,6 @@ def get_yt_token() -> str:
 def upload_youtube(video_path: str, data: dict) -> str:
     token = get_yt_token()
     niche = data["niche"]
-
     description = (
         f"{data['description']}\n\n"
         f"🔔 Subscribe for new videos every day!\n"
@@ -383,7 +386,6 @@ def upload_youtube(video_path: str, data: dict) -> str:
                                 "nursery rhymes", "educational", "shorts",
                                 niche["label"].lower()]
     ))[:15]
-
     metadata = {
         "snippet": {
             "title": data["title"][:100],
@@ -398,7 +400,6 @@ def upload_youtube(video_path: str, data: dict) -> str:
             "madeForKids": True,
         },
     }
-
     init_r = requests.post(
         "https://www.googleapis.com/upload/youtube/v3/videos"
         "?uploadType=resumable&part=snippet,status",
@@ -411,7 +412,6 @@ def upload_youtube(video_path: str, data: dict) -> str:
     )
     if init_r.status_code != 200:
         raise Exception(f"YouTube init error {init_r.status_code}: {init_r.text[:200]}")
-
     video_bytes = Path(video_path).read_bytes()
     up_r = requests.put(
         init_r.headers["Location"],
@@ -421,17 +421,10 @@ def upload_youtube(video_path: str, data: dict) -> str:
     )
     if up_r.status_code not in (200, 201):
         raise Exception(f"Upload error {up_r.status_code}: {up_r.text[:200]}")
-
     return up_r.json().get("id", "unknown")
 
 
 # ── FULL PIPELINE ─────────────────────────────────────────────────────────────
-def set_status(step: str, index: int):
-    pipeline_status["step"] = step
-    pipeline_status["step_index"] = index
-    print(f"[{index}/7] {step}")
-
-
 def full_pipeline(enabled_niches: List[str]):
     if pipeline_status["running"]:
         return
@@ -442,54 +435,51 @@ def full_pipeline(enabled_niches: List[str]):
     session.mkdir(exist_ok=True)
 
     try:
-        # 1 — Content
-        set_status("Generating script + SEO with Claude...", 1)
+        pipeline_status["step"] = "Generating script + SEO with Claude..."
+        pipeline_status["step_index"] = 1
         niche_key = pick_niche(enabled_niches)
         data = generate_content(niche_key)
         niche = data["niche"]
         print(f"✅ Title: {data['title']}")
 
-        # 2 — Voice
-        set_status("Synthesizing voice with Edge TTS...", 2)
+        pipeline_status["step"] = "Synthesizing voice with Edge TTS..."
+        pipeline_status["step_index"] = 2
         voice_p = str(session / "voice.mp3")
         srt_p = str(session / "subs.srt")
         generate_voice(data["content"], niche, voice_p, srt_p)
         audio_dur = get_duration(voice_p)
         scene_dur = min(audio_dur / len(data["scenes"]), 12.0)
 
-        # 3 — Scene clips
-        set_status("Generating scene images...", 3)
+        pipeline_status["step"] = "Generating scene images..."
+        pipeline_status["step_index"] = 3
         clips = []
         for i, scene in enumerate(data["scenes"]):
             out = str(session / f"scene_{i}.mp4")
-            ok = build_scene_clip(scene, niche["image_style"], scene_dur, out)
-            if ok:
+            if build_scene_clip(scene, niche["image_style"], scene_dur, out):
                 clips.append(out)
                 print(f"  ✅ Scene {i+1}")
         if not clips:
             raise Exception("All scene generation failed")
 
-        # 4 — Music
-        set_status("Generating background music...", 4)
+        pipeline_status["step"] = "Generating background music..."
+        pipeline_status["step_index"] = 4
         music_p = str(session / "music.mp3")
-        music_ok = generate_music(niche["music_prompt"], music_p)
-        if not music_ok:
+        if not generate_music(niche["music_prompt"], music_p):
             music_p = None
 
-        # 5 — Assemble
-        set_status("Assembling final video...", 5)
+        pipeline_status["step"] = "Assembling final video..."
+        pipeline_status["step_index"] = 5
         final_p = str(session / "final.mp4")
         assemble_video(clips, voice_p, music_p, srt_p, final_p)
-        print(f"✅ Video assembled")
 
-        # 6 — Upload
-        set_status("Uploading to YouTube...", 6)
+        pipeline_status["step"] = "Uploading to YouTube..."
+        pipeline_status["step_index"] = 6
         video_id = upload_youtube(final_p, data)
         url = f"https://youtube.com/shorts/{video_id}"
         print(f"✅ Live: {url}")
 
-        # 7 — Log
-        set_status("Done!", 7)
+        pipeline_status["step"] = "Done!"
+        pipeline_status["step_index"] = 7
         log = json.loads(LOG_FILE.read_text()) if LOG_FILE.exists() else []
         entry = {
             "timestamp": ts, "video_id": video_id,
@@ -509,13 +499,9 @@ def full_pipeline(enabled_niches: List[str]):
 
 
 # ── API ROUTES ────────────────────────────────────────────────────────────────
-class RunRequest(BaseModel):
-    enabled_niches: Optional[List[str]] = None
-
-
 @app.get("/")
 def root():
-    return {"status": "ok", "service": "KidsContent.ai API v2.1"}
+    return {"status": "ok", "service": "KidsContent.ai API v2.2"}
 
 
 @app.post("/run")
