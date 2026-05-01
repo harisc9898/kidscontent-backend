@@ -280,14 +280,30 @@ def generate_content(topic: Optional[str], content_type: Optional[str]) -> dict:
     print(f"✅ Content generated via {llm_used}")
     pipeline_status["llm_used"] = llm_used
 
-    # Parse JSON response
+    # Parse JSON response — robust cleaning pipeline
     raw = re.sub(r"^```[a-z]*\n?", "", raw.strip()).rstrip("`").strip()
-    # Find JSON block if LLM added extra text
+
+    # Extract JSON block if LLM added extra text before/after
     json_match = re.search(r'\{[\s\S]*\}', raw)
     if json_match:
         raw = json_match.group(0)
 
-    data = json.loads(raw)
+    # Remove ALL invalid control characters (the main cause of this error)
+    # Keep only: tab(\t), newline(\n), carriage return(\r) — remove everything else 0x00-0x1f
+    raw = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', raw)
+
+    # Fix common LLM JSON mistakes
+    raw = raw.replace('\r\n', '\\n').replace('\r', '\\n')
+
+    # Remove trailing commas before } or ] (invalid JSON)
+    raw = re.sub(r',\s*([}\]])', r'\1', raw)
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        # Last resort: use ast-style aggressive cleaning
+        raw_clean = raw.encode('utf-8', errors='ignore').decode('utf-8')
+        data = json.loads(raw_clean)
     data["topic"] = topic
     data["content_type"] = content_type
     data["llm_used"] = llm_used
