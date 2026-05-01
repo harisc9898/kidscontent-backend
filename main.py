@@ -754,17 +754,23 @@ def assemble_video(clips: list, voice_p: str, music_p: Optional[str],
         for c in clips:
             f.write(f"file '{c}'\n")
     concat_out = str(WORK_DIR / f"concat_{ts}.mp4")
-    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                    "-i", txt, "-c", "copy", concat_out],
-                   capture_output=True, timeout=120)
+    r = subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                        "-i", txt, "-c", "copy", concat_out],
+                       capture_output=True, timeout=120)
+    if r.returncode != 0 or not Path(concat_out).exists():
+        raise Exception(f"FFmpeg concat failed: {r.stderr[-400:].decode(errors='ignore')}")
+    print(f"  ✅ Concat done ({len(clips)} clips)")
 
     # Trim to voice + 0.5s padding, max 59s for Shorts
     voice_dur = min(get_duration(voice_p) + 0.5, 59.0)
     trimmed = str(WORK_DIR / f"trimmed_{ts}.mp4")
-    subprocess.run(["ffmpeg", "-y", "-i", concat_out, "-t", str(voice_dur),
-                    "-c:v", "libx264", "-crf", "22", "-preset", "fast",
-                    "-pix_fmt", "yuv420p", trimmed],
-                   capture_output=True, timeout=180)
+    r = subprocess.run(["ffmpeg", "-y", "-i", concat_out, "-t", str(voice_dur),
+                        "-c:v", "libx264", "-crf", "22", "-preset", "fast",
+                        "-pix_fmt", "yuv420p", trimmed],
+                       capture_output=True, timeout=180)
+    if r.returncode != 0 or not Path(trimmed).exists():
+        raise Exception(f"FFmpeg trim failed: {r.stderr[-400:].decode(errors='ignore')}")
+    print(f"  ✅ Trim done ({voice_dur:.1f}s)")
 
     # Burn subtitles
     sub_filter = srt_to_drawtext(srt_p)
@@ -774,7 +780,11 @@ def assemble_video(clips: list, voice_p: str, music_p: Optional[str],
                             "-c:v", "libx264", "-crf", "20", "-preset", "fast",
                             "-pix_fmt", "yuv420p", subbed],
                            capture_output=True, timeout=300)
-        subbed = subbed if r.returncode == 0 else trimmed
+        if r.returncode == 0 and Path(subbed).exists():
+            print("  ✅ Subtitles burned")
+        else:
+            print(f"  ⚠️  Subtitle burn failed, continuing without: {r.stderr[-200:].decode(errors='ignore')}")
+            subbed = trimmed
     else:
         subbed = trimmed
 
@@ -783,7 +793,7 @@ def assemble_video(clips: list, voice_p: str, music_p: Optional[str],
         filt = ("[1:a]volume=1.5[voice];"
                 "[2:a]volume=0.20,aloop=loop=-1:size=2e+09[music];"
                 "[voice][music]amix=inputs=2:duration=first[afinal]")
-        subprocess.run(["ffmpeg", "-y",
+        r = subprocess.run(["ffmpeg", "-y",
                         "-i", subbed, "-i", voice_p, "-i", music_p,
                         "-filter_complex", filt,
                         "-map", "0:v", "-map", "[afinal]",
@@ -791,11 +801,15 @@ def assemble_video(clips: list, voice_p: str, music_p: Optional[str],
                         "-shortest", "-movflags", "+faststart", output_p],
                        capture_output=True, timeout=300)
     else:
-        subprocess.run(["ffmpeg", "-y", "-i", subbed, "-i", voice_p,
+        r = subprocess.run(["ffmpeg", "-y", "-i", subbed, "-i", voice_p,
                         "-map", "0:v", "-map", "1:a",
                         "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                         "-shortest", "-movflags", "+faststart", output_p],
                        capture_output=True, timeout=300)
+
+    if r.returncode != 0 or not Path(output_p).exists() or Path(output_p).stat().st_size < 10000:
+        raise Exception(f"FFmpeg final assembly failed: {r.stderr[-400:].decode(errors='ignore')}")
+    print(f"  ✅ Final video assembled ({Path(output_p).stat().st_size // 1024}KB)")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -922,6 +936,13 @@ def full_pipeline(topic: Optional[str], content_type: Optional[str]):
         # 6 — Upload to YouTube
         pipeline_status["step"] = "Uploading to YouTube with full SEO..."
         pipeline_status["step_index"] = 6
+        # Validate final video exists and is non-trivial before uploading
+        if not Path(final_p).exists():
+            raise Exception("Final video file missing — assembly step failed silently")
+        final_size = Path(final_p).stat().st_size
+        if final_size < 10_000:
+            raise Exception(f"Final video too small ({final_size} bytes) — assembly likely failed")
+        print(f"📤 Uploading video ({final_size // 1024}KB) to YouTube...")
         video_id = upload_youtube(final_p, data)
         url = f"https://youtube.com/shorts/{video_id}"
         print(f"✅ Live: {url}")
@@ -986,6 +1007,19 @@ def get_logs():
 def get_topics():
     """Get the default topic pool — useful for the dashboard."""
     return {"topics": DEFAULT_TOPICS, "total": len(DEFAULT_TOPICS)}
+
+
+@app.get("/niches")
+def get_niches():
+    """Alias for /topics — for frontend compatibility."""
+    return {
+        "niches": [
+            {"id": "rhyme",    "label": "Nursery Rhymes",  "icon": "🎵", "videos": 0},
+            {"id": "story",    "label": "Bedtime Stories", "icon": "🌙", "videos": 0},
+            {"id": "facts",    "label": "Animal Facts",    "icon": "🦁", "videos": 0},
+            {"id": "learning", "label": "ABC / 123",       "icon": "🔤", "videos": 0},
+        ]
+    }
 
 
 @app.get("/health")
