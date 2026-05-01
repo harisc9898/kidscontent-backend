@@ -630,8 +630,6 @@ def build_scene_clip(scene: str, duration: float, output_path: str) -> bool:
     if not source:
         return False
 
-    # Use simple loop + fade — much faster than zoompan on limited CPU
-    # zoompan processes every frame individually and is very slow on free tier
     cmd = [
         "ffmpeg", "-y",
         "-loop", "1",
@@ -644,15 +642,16 @@ def build_scene_clip(scene: str, duration: float, output_path: str) -> bool:
         "-t", str(duration),
         "-c:v", "libx264",
         "-crf", "28",
-        "-preset", "ultrafast",   # fastest possible encode
+        "-preset", "ultrafast",
         "-pix_fmt", "yuv420p",
+        "-tune", "stillimage",
+        "-threads", "1",       # single thread — prevents OOM on free tier
         "-an",
-        "-tune", "stillimage",    # optimized for still image video
         output_path,
     ]
     result = subprocess.run(cmd, capture_output=True, timeout=120)
     if result.returncode != 0:
-        print(f"  FFmpeg error: {result.stderr[-300:]}")
+        print(f"  FFmpeg scene error: {result.stderr[-300:].decode(errors='ignore')}")
     Path(img_path).unlink(missing_ok=True)
     return result.returncode == 0
 
@@ -746,70 +745,104 @@ def _t2s(t: str) -> float:
 
 def assemble_video(clips: list, voice_p: str, music_p: Optional[str],
                    srt_p: str, output_p: str):
+    """
+    Single-pass assembly optimised for Render free tier (512 MB RAM, shared CPU).
+    Strategy: concat with stream-copy (zero re-encode) → one final pass that
+    trims + burns subs + mixes audio all at once.  Avoids multiple encode rounds
+    that OOM-kill the process.
+    """
     ts = str(int(time.time()))
 
-    # Concat clips
+    # ── Step 1: concat clips with stream-copy (fast, near-zero memory) ──────
     txt = str(WORK_DIR / f"concat_{ts}.txt")
     with open(txt, "w") as f:
         for c in clips:
             f.write(f"file '{c}'\n")
     concat_out = str(WORK_DIR / f"concat_{ts}.mp4")
-    r = subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                        "-i", txt, "-c", "copy", concat_out],
-                       capture_output=True, timeout=120)
+    r = subprocess.run(
+        ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+         "-i", txt, "-c", "copy", concat_out],
+        capture_output=True, timeout=120)
     if r.returncode != 0 or not Path(concat_out).exists():
         raise Exception(f"FFmpeg concat failed: {r.stderr[-400:].decode(errors='ignore')}")
     print(f"  ✅ Concat done ({len(clips)} clips)")
 
-    # Trim to voice + 0.5s padding, max 59s for Shorts
+    # ── Step 2: single final pass — trim + subtitles + audio mix ────────────
     voice_dur = min(get_duration(voice_p) + 0.5, 59.0)
-    trimmed = str(WORK_DIR / f"trimmed_{ts}.mp4")
-    r = subprocess.run(["ffmpeg", "-y", "-i", concat_out, "-t", str(voice_dur),
-                        "-c:v", "libx264", "-crf", "22", "-preset", "fast",
-                        "-pix_fmt", "yuv420p", trimmed],
-                       capture_output=True, timeout=180)
-    if r.returncode != 0 or not Path(trimmed).exists():
-        raise Exception(f"FFmpeg trim failed: {r.stderr[-400:].decode(errors='ignore')}")
-    print(f"  ✅ Trim done ({voice_dur:.1f}s)")
-
-    # Burn subtitles
     sub_filter = srt_to_drawtext(srt_p)
-    subbed = str(WORK_DIR / f"subbed_{ts}.mp4")
-    if sub_filter:
-        r = subprocess.run(["ffmpeg", "-y", "-i", trimmed, "-vf", sub_filter,
-                            "-c:v", "libx264", "-crf", "20", "-preset", "fast",
-                            "-pix_fmt", "yuv420p", subbed],
-                           capture_output=True, timeout=300)
-        if r.returncode == 0 and Path(subbed).exists():
-            print("  ✅ Subtitles burned")
+
+    # Build video filter: subtitles are optional
+    vf = sub_filter if sub_filter else "copy"
+
+    # Build inputs list and audio filter depending on whether music exists
+    use_music = music_p and Path(music_p).exists()
+
+    if use_music:
+        audio_filt = (
+            "[1:a]volume=1.5[voice];"
+            "[2:a]volume=0.18,aloop=loop=-1:size=2e+09[music];"
+            "[voice][music]amix=inputs=2:duration=first[afinal]"
+        )
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", concat_out,          # 0:v  — video clips
+            "-i", voice_p,             # 1:a  — narration
+            "-i", music_p,             # 2:a  — background music
+            "-t", str(voice_dur),
+            "-vf", vf,
+            "-filter_complex", audio_filt,
+            "-map", "0:v",
+            "-map", "[afinal]",
+            # Minimal encode settings for free tier
+            "-c:v", "libx264", "-crf", "28", "-preset", "ultrafast",
+            "-tune", "stillimage",
+            "-c:a", "aac", "-b:a", "128k",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            # Memory / thread limits
+            "-threads", "1",
+            output_p,
+        ]
+    else:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", concat_out,          # 0:v
+            "-i", voice_p,             # 1:a
+            "-t", str(voice_dur),
+            "-vf", vf,
+            "-map", "0:v",
+            "-map", "1:a",
+            "-c:v", "libx264", "-crf", "28", "-preset", "ultrafast",
+            "-tune", "stillimage",
+            "-c:a", "aac", "-b:a", "128k",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-threads", "1",
+            output_p,
+        ]
+
+    print(f"  🎬 Final encode: {voice_dur:.1f}s, subs={'yes' if sub_filter else 'no'}, music={'yes' if use_music else 'no'}")
+    r = subprocess.run(cmd, capture_output=True, timeout=420)
+
+    if r.returncode != 0:
+        err = r.stderr[-600:].decode(errors='ignore')
+        # If subtitles caused the failure, retry without them
+        if sub_filter and ("drawtext" in err or "fontfile" in err or "No such filter" in err):
+            print(f"  ⚠️  Subtitle filter failed, retrying without subs...")
+            cmd_nosub = [c if c != vf else "copy" for c in cmd]
+            r = subprocess.run(cmd_nosub, capture_output=True, timeout=420)
+            if r.returncode != 0:
+                raise Exception(f"FFmpeg final pass failed (no-sub retry): {r.stderr[-400:].decode(errors='ignore')}")
         else:
-            print(f"  ⚠️  Subtitle burn failed, continuing without: {r.stderr[-200:].decode(errors='ignore')}")
-            subbed = trimmed
-    else:
-        subbed = trimmed
+            raise Exception(f"FFmpeg final pass failed: {err}")
 
-    # Mix voice + optional background music
-    if music_p and Path(music_p).exists():
-        filt = ("[1:a]volume=1.5[voice];"
-                "[2:a]volume=0.20,aloop=loop=-1:size=2e+09[music];"
-                "[voice][music]amix=inputs=2:duration=first[afinal]")
-        r = subprocess.run(["ffmpeg", "-y",
-                        "-i", subbed, "-i", voice_p, "-i", music_p,
-                        "-filter_complex", filt,
-                        "-map", "0:v", "-map", "[afinal]",
-                        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                        "-shortest", "-movflags", "+faststart", output_p],
-                       capture_output=True, timeout=300)
-    else:
-        r = subprocess.run(["ffmpeg", "-y", "-i", subbed, "-i", voice_p,
-                        "-map", "0:v", "-map", "1:a",
-                        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                        "-shortest", "-movflags", "+faststart", output_p],
-                       capture_output=True, timeout=300)
+    if not Path(output_p).exists() or Path(output_p).stat().st_size < 10_000:
+        raise Exception(f"Final video missing or too small after encode")
 
-    if r.returncode != 0 or not Path(output_p).exists() or Path(output_p).stat().st_size < 10000:
-        raise Exception(f"FFmpeg final assembly failed: {r.stderr[-400:].decode(errors='ignore')}")
-    print(f"  ✅ Final video assembled ({Path(output_p).stat().st_size // 1024}KB)")
+    # Clean up intermediate files to free /tmp space
+    Path(concat_out).unlink(missing_ok=True)
+    Path(txt).unlink(missing_ok=True)
+    print(f"  ✅ Final video ready ({Path(output_p).stat().st_size // 1024} KB)")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
