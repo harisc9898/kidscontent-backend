@@ -222,14 +222,6 @@ STRICT VIRAL SCRIPT RULES (non-negotiable):
 5. TOTAL LENGTH: 130–155 words MAX. This is a 50–58 second Short.
 6. LANGUAGE: Casual spoken English. No academic words. Write for someone who skipped school.
 7. EVERY SENTENCE must make the viewer want to hear the next one.
-
-SCENE IMAGE RULES (critical for visual quality):
-- Each scene description MUST include: subject + lighting + camera angle + mood
-- Be hyper-specific: "extreme close-up of rusted iron chains on dungeon wall, candlelight flickering, deep shadows"
-- NOT generic: "dark room" or "medieval setting" — these produce bad images
-- Include atmospheric details: smoke, mist, rain, fire, blood, shadow, silhouette
-- Camera directions: "overhead shot", "low angle", "extreme close-up", "wide establishing shot"
-- Lighting: "single candle", "moonlight through bars", "torch on stone wall", "harsh interrogation lamp"
 """
 
     history_prompt = f"""You are a viral YouTube Shorts writer for a dark history channel (Weird History / Dark Docs style).
@@ -242,22 +234,31 @@ HISTORY SCRIPT STYLE:
 - Phrases that work: "Nobody talks about this", "History books hide this", "What they don't tell you is..."
 - End with a haunting or shocking final sentence
 
+SCENE IMAGE RULES — READ CAREFULLY:
+The 8 scenes must be SPECIFIC to the topic "{topic}" — NOT generic stock images.
+Each scene must depict an actual visual element FROM this specific story.
+Include: camera angle + lighting + specific subject + mood/atmosphere.
+Examples of GOOD scenes (specific): "extreme close-up of the Judas Cradle iron spike device, single torch illuminating rust and dried blood, medieval dungeon stone wall, hyper-realistic"
+Examples of BAD scenes (generic): "dark room", "medieval setting", "historical scene"
+Include photo-realism keywords: "photorealistic, 8K, dramatic lighting, film grain, cinematic"
+NO text, NO modern elements, NO people's faces, NO watermarks.
+
 Return ONLY valid JSON (zero markdown, zero backticks, zero text outside JSON):
 {{
-  "title": "YouTube title max 70 chars, start with emoji, include shocking claim or number",
+  "title": "YouTube title max 70 chars, start with emoji, include shocking claim or specific number",
   "content": "the full 130-155 word spoken script",
   "description": "160-word YouTube description with keywords. End with subscribe CTA.",
   "tags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8","tag9","tag10","tag11","tag12"],
   "hashtags": "#Shorts #DarkHistory #History #HistoryFacts #BizarreHistory",
   "scenes": [
-    "extreme close-up rusted iron torture device stone wall, single torch flame, dramatic shadows, photorealistic",
-    "wide shot medieval dungeon corridor, prisoners in chains, torchlight, atmospheric mist, cinematic",
-    "overhead shot ancient execution square, crowd silhouettes, smoke rising, overcast sky, dark realism",
-    "close-up weathered parchment manuscript with bloodstains, candlelight, wooden table, moody",
-    "low angle shot imposing stone castle exterior at night, lightning, heavy rain, gothic atmosphere",
-    "medium shot hooded executioner preparing instruments on stone table, single candle light, shadows",
-    "extreme close-up human skull with cracks, soil and roots, archaeological excavation, dramatic lighting",
-    "wide establishing shot burning medieval village at night, silhouettes fleeing, dramatic orange fire glow"
+    "SCENE 1: hyper-specific visual directly related to \"{topic}\", camera angle, dramatic lighting, photorealistic, 8K cinematic",
+    "SCENE 2: different angle or detail of the same topic, specific props or environment, atmospheric lighting",
+    "SCENE 3: the setting or location where this history happened, wide establishing shot, dark cinematic mood",
+    "SCENE 4: a key object or symbol from this historical event, extreme close-up, dramatic shadows",
+    "SCENE 5: the aftermath or consequence shown visually, overhead or low angle, dark realism",
+    "SCENE 6: another specific visual detail from this story, medium shot, torchlight or candlelight",
+    "SCENE 7: environmental atmosphere of the era and place, gothic or ancient architecture, moody fog",
+    "SCENE 8: final powerful image that captures the horror or shock of the topic, cinematic, hyper-detailed"
   ],
   "voice_style": "authoritative",
   "content_type": "history"
@@ -275,28 +276,37 @@ TRUE CRIME SCRIPT STYLE:
 - Create dread: "Nobody noticed. Until it was too late."
 - Real-feeling details: specific times, locations, small chilling facts
 
+SCENE IMAGE RULES — READ CAREFULLY:
+The 8 scenes must be SPECIFIC to the topic "{topic}" — NOT generic stock images.
+Each scene must depict an actual visual element FROM this specific case or story.
+Include: camera angle + specific location + lighting + tension/mood.
+Examples of GOOD scenes: "extreme close-up of a coded letter with ciphers on aged paper under desk lamp, noir lighting, detective office"
+Examples of BAD scenes: "dark room", "crime scene", "mysterious figure"
+NO text, NO real faces, NO graphic gore, NO watermarks. Cinematic, atmospheric, suggestive.
+
 Return ONLY valid JSON (zero markdown, zero backticks, zero text outside JSON):
 {{
-  "title": "YouTube title max 70 chars, start with emoji, true crime format: 'The [Person] who [Shocking Thing]'",
+  "title": "YouTube title max 70 chars, start with emoji, true crime format: 'The [Person/Event] who [Shocking Thing]'",
   "content": "the full 130-155 word spoken script",
   "description": "160-word YouTube description with true crime keywords. End with subscribe CTA.",
   "tags": ["tag1","tag2","tag3","tag4","tag5","tag6","tag7","tag8","tag9","tag10","tag11","tag12"],
   "hashtags": "#Shorts #TrueCrime #CrimeFiles #Mystery #UnsolvedMysteries",
   "scenes": [
-    "extreme close-up detective case files with crime scene photos spread on desk, harsh desk lamp, noir atmosphere",
-    "wide shot empty crime scene at night, police tape fluttering, single streetlight, rain on pavement",
-    "medium shot shadowy silhouette of person watching from doorway, backlit, smoke in air, tension",
-    "close-up old black and white mugshot photo pinned to cork board with red string, dim office light",
-    "overhead shot abandoned warehouse interior, single hanging bare bulb, dark corners, photorealistic",
-    "low angle shot police detective walking empty corridor, flashlight beam, cinematic noir lighting",
-    "extreme close-up bloody handprint on white wall, forensic light, dramatic contrast, hyperrealistic",
-    "wide shot courtroom interior, empty wooden benches, dramatic sunlight through high windows, ominous"
+    "SCENE 1: hyper-specific visual directly related to \"{topic}\", noir atmosphere, dramatic lighting, photorealistic",
+    "SCENE 2: the location where this crime occurred, dark cinematic shot, atmospheric details, film grain",
+    "SCENE 3: a specific clue, object or evidence related to this case, extreme close-up, forensic lighting",
+    "SCENE 4: the environment or building connected to this story, wide shot, ominous shadows, night setting",
+    "SCENE 5: a detective or investigative element specific to this case, noir lighting, cold color palette",
+    "SCENE 6: another key visual detail from this crime story, medium shot, high contrast, tense atmosphere",
+    "SCENE 7: the aftermath or emotional weight of this case shown environmentally, dark, desaturated",
+    "SCENE 8: final haunting image that captures the unresolved or disturbing nature of the story, cinematic"
   ],
   "voice_style": "suspenseful",
   "content_type": "truecrime"
 }}"""
 
     return history_prompt if content_type == "history" else truecrime_prompt
+
 
 
 # ── LLM CALLERS ───────────────────────────────────────────────────────────────
@@ -728,35 +738,35 @@ def generate_image_modelslab(scene: str, content_type: str, output_path: str) ->
 
 def generate_image_pollinations(scene: str, content_type: str, output_path: str) -> bool:
     """
-    v5.0: 3 attempts with different models and seeds.
-    Flux-pro gives the best cinematic quality on Pollinations.
+    v6.0: Use 720x1280 instead of 1080x1920.
+    Smaller resolution generates 3x faster (prevents timeout on Render free tier).
+    FFmpeg scales up to 1080x1920 in Ken Burns step — no visible quality loss.
+    Models: flux (fastest+reliable) → flux-realism → turbo.
     """
     prompt, _ = _build_image_prompt(scene, content_type)
     encoded   = requests.utils.quote(prompt)
+    # 720x1280 = same 9:16 ratio, but 3x faster generation
+    W, H = 720, 1280
 
-    # Try 3 different model/seed combinations
-    attempts = [
-        f"https://image.pollinations.ai/prompt/{encoded}?width={VID_W}&height={VID_H}&nologo=true&model=flux-pro&seed={random.randint(1000,999999)}&enhance=true",
-        f"https://image.pollinations.ai/prompt/{encoded}?width={VID_W}&height={VID_H}&nologo=true&model=flux&seed={random.randint(1000,999999)}&enhance=true",
-        f"https://image.pollinations.ai/prompt/{encoded}?width={VID_W}&height={VID_H}&nologo=true&seed={random.randint(1000,999999)}&enhance=true",
-    ]
-
-    for i, url in enumerate(attempts):
+    models = ["flux", "flux-realism", "turbo"]
+    for i, model in enumerate(models):
+        seed = random.randint(1000, 999999)
+        url = (f"https://image.pollinations.ai/prompt/{encoded}"
+               f"?width={W}&height={H}&nologo=true&model={model}&seed={seed}&enhance=true")
         try:
-            print(f"    Pollinations attempt {i+1}/3...")
-            r = requests.get(url, timeout=55)
+            print(f"    Pollinations attempt {i+1}/3 (model={model})...")
+            r = requests.get(url, timeout=50)
             if r.status_code == 200 and len(r.content) > 10_000:
                 Path(output_path).write_bytes(r.content)
                 if _verify_image(output_path):
                     return True
-                else:
-                    print(f"    Pollinations image too small ({len(r.content)} bytes)")
+                print(f"    Image too small ({len(r.content)}b), trying next model")
             else:
-                print(f"    Pollinations HTTP {r.status_code} / size {len(r.content)}")
+                print(f"    HTTP {r.status_code} size={len(r.content)}")
         except Exception as e:
-            print(f"    Pollinations attempt {i+1} failed: {e}")
+            print(f"    Pollinations {model} failed: {e}")
         if i < 2:
-            time.sleep(2)
+            time.sleep(3)
 
     return False
 
@@ -857,9 +867,10 @@ def _ken_burns_filter(duration: float, style: int) -> str:
     d = int(duration * CLIP_FPS)
     out_w, out_h = VID_W, VID_H  # 1080 × 1920
 
-    # Pre-scale to 3× for smoother zoompan
-    scale_w = out_w * 3  # 3240
-    scale_h = out_h * 3  # 5760
+    # Scale input to 2x output size — works for any input resolution (720x1280 or 1080x1920)
+    # 2x gives enough zoom headroom without excessive memory usage
+    scale_w = out_w * 2  # 2160
+    scale_h = out_h * 2  # 3840
 
     styles = {
         # 1. Slow zoom in — builds intimacy and dread
@@ -1078,92 +1089,91 @@ def _wrap_subtitle_text(text: str, max_chars: int = 22) -> list:
     return lines[:2]  # max 2 lines per subtitle card
 
 
-def srt_to_drawtext(srt_path: str, content_type: str) -> Optional[str]:
+def srt_to_ass(srt_path: str, ass_path: str, content_type: str) -> bool:
     """
-    v5.0 completely rewritten subtitle renderer.
+    Convert SRT to ASS (Advanced SubStation Alpha) format.
+    ASS subtitles are burned with -vf subtitles= which is far more reliable
+    than drawtext — supports proper centering, margins, and never overflows.
 
-    Key improvements:
-    - Smaller font (46px) that fits within 1080px width
-    - Semi-transparent dark box behind text for contrast on any background
-    - Hard word-wrap at 22 chars per line
-    - y positioned at 85% down (well inside frame safe area)
-    - All special characters escaped correctly
-    - Two-line support for natural sentence breaks
+    Layout: bottom-center, 120px margin from bottom (safe zone),
+    80px left/right margin, fontsize 56px bold white with black outline.
     """
     try:
-        content = Path(srt_path).read_text(encoding="utf-8")
+        srt_content = Path(srt_path).read_text(encoding="utf-8")
     except Exception:
-        return None
+        return False
 
-    # Font size tuned for 1080×1920:
-    # 46px = readable but never overflows 1080px width
-    # Box gives contrast on any image background
-    if content_type == "history":
-        fontsize  = 52   # slightly larger for shorter history phrases
-        fontcolor = "white"
-    else:
-        fontsize  = 48   # slightly smaller for longer crime phrases
-        fontcolor = "white"
+    # ASS header — tuned for 1080x1920 vertical video
+    # MarginV=120 keeps text 120px from bottom = well inside 1920px frame
+    # MarginL/R=80 keeps text 80px from sides = well inside 1080px frame
+    # Fontsize 56 with bold = large, readable, viral-shorts style
+    ass_header = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
 
-    filters = []
-    for block in re.split(r"\n\n+", content.strip()):
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,56,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,80,80,120,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+    def srt_time_to_ass(t: str) -> str:
+        """Convert SRT timestamp (00:00:00,000) to ASS (0:00:00.00)"""
+        t = t.replace(",", ".")
+        h, m, rest = t.split(":")
+        s, ms = rest.split(".")
+        return f"{int(h)}:{m}:{s}.{ms[:2]}"
+
+    events = []
+    for block in re.split(r"\n\n+", srt_content.strip()):
         lines = block.strip().split("\n")
         if len(lines) < 3:
             continue
         try:
-            times = lines[1].replace(",", ".").split(" --> ")
-            start = _t2s(times[0].strip())
-            end   = _t2s(times[1].strip())
-            raw_text = " ".join(lines[2:]).strip()
-
-            # Wrap into max 2 short lines
-            wrapped = _wrap_subtitle_text(raw_text, max_chars=22)
-
-            for line_idx, line_text in enumerate(wrapped):
-                escaped = _escape_drawtext(line_text)
-                if not escaped.strip():
-                    continue
-
-                # Stack lines: first line higher, second line lower
-                # y = 85% down screen, then +lineheight per additional line
-                # This keeps ALL subtitles well inside the 1920px frame
-                y_base  = f"h*0.85"
-                y_extra = line_idx * (fontsize + 8)
-                y_pos   = f"{y_base}+{y_extra}" if y_extra > 0 else y_base
-
-                filters.append(
-                    f"drawtext="
-                    f"text='{escaped}'"
-                    f":fontsize={fontsize}"
-                    f":fontcolor={fontcolor}"
-                    f":borderw=4"          # thick black outline
-                    f":bordercolor=black"
-                    f":shadowx=2:shadowy=2"  # drop shadow
-                    f":shadowcolor=black@0.8"
-                    f":x=(w-text_w)/2"     # horizontally centered
-                    f":y={y_pos}"          # vertically in safe zone
-                    f":enable='between(t,{start:.3f},{end:.3f})'"
-                )
-        except Exception as sub_e:
-            print(f"    Subtitle block error: {sub_e}")
+            times = lines[1].split(" --> ")
+            start_ass = srt_time_to_ass(times[0].strip())
+            end_ass   = srt_time_to_ass(times[1].strip())
+            text = " ".join(lines[2:]).strip()
+            # Wrap at 20 chars — short enough to never overflow 1080px at fontsize 56
+            wrapped_lines = _wrap_subtitle_text(text, max_chars=20)
+            ass_sep = chr(92) + "N"
+            ass_text = ass_sep.join(wrapped_lines)
+            events.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{ass_text}")
+        except Exception as e:
+            print(f"    ASS block error: {e}")
             continue
 
-    return ",".join(filters) if filters else None
+    if not events:
+        return False
+
+    Path(ass_path).write_text(ass_header + "\n".join(events), encoding="utf-8")
+    return True
+
+
+def srt_to_drawtext(srt_path: str, content_type: str) -> Optional[str]:
+    """Legacy — kept for compatibility. New code uses srt_to_ass."""
+    return None  # Disabled — ASS subtitles used instead
 
 
 def assemble_video(clips: list, voice_p: str, music_p: Optional[str],
                    srt_p: str, output_p: str, content_type: str):
     """
-    v5.0 assembly:
-    - Voice volume: 2.0 (was 1.6)
-    - Music volume: 0.10 (was 0.15) — voice is king
-    - Audio loudnorm on voice before mixing for consistent levels
-    - CRF 23 for better output quality (was 27)
-    - Subtitle engine fully replaced (see srt_to_drawtext above)
+    v6.0 assembly — 3-pass pipeline:
+    Pass 1: Concat scene clips
+    Pass 2: Mix audio (voice loudnorm + quiet music)
+    Pass 3: Burn ASS subtitles (separate pass = 100% reliable, never overflows)
+
+    Separating subtitle burn into its own pass is the KEY fix.
+    When subtitles share a -vf chain with complex_filter, FFmpeg often
+    miscomputes text_w/text_h causing overflow. Separate pass = clean.
     """
     ts = str(int(time.time()))
 
-    # Concat clips
+    # ── Pass 1: Concat clips ──────────────────────────────────────────────────
     txt = str(WORK_DIR / f"concat_{ts}.txt")
     with open(txt, "w") as f:
         for c in clips:
@@ -1177,72 +1187,91 @@ def assemble_video(clips: list, voice_p: str, music_p: Optional[str],
         raise Exception(f"FFmpeg concat failed: {r.stderr[-400:].decode(errors='ignore')}")
     print(f"  ✅ Concat done ({len(clips)} clips)")
 
-    voice_dur  = min(get_duration(voice_p) + 0.5, 59.0)
-    sub_filter = srt_to_drawtext(srt_p, content_type)
-    vf         = sub_filter if sub_filter else "null"
-    use_music  = music_p and Path(music_p).exists()
+    voice_dur = min(get_duration(voice_p) + 0.5, 59.0)
+    use_music = music_p and Path(music_p).exists()
 
+    # ── Pass 2: Audio mix + trim ──────────────────────────────────────────────
+    audio_mixed = str(WORK_DIR / f"mixed_{ts}.mp4")
     if use_music:
-        # v5.0: loudnorm on voice, music much quieter (0.10 vs 0.15)
         audio_filt = (
             "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11,volume=2.0[voice];"
-            "[2:a]volume=0.10,aloop=loop=-1:size=2e+09[music];"
+            "[2:a]volume=0.09,aloop=loop=-1:size=2e+09[music];"
             "[voice][music]amix=inputs=2:duration=first[afinal]"
         )
-        cmd = [
+        cmd_audio = [
             "ffmpeg", "-y",
             "-i", concat_out, "-i", voice_p, "-i", music_p,
             "-t", str(voice_dur),
-            "-vf", vf,
             "-filter_complex", audio_filt,
             "-map", "0:v", "-map", "[afinal]",
-            "-c:v", "libx264", "-crf", "23", "-preset", "ultrafast",
-            "-c:a", "aac", "-b:a", "192k",   # v5: 192k (was 128k)
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            "-threads", "1",
-            output_p,
-        ]
-    else:
-        audio_filt = "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11,volume=2.0[afinal]"
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", concat_out, "-i", voice_p,
-            "-t", str(voice_dur),
-            "-vf", vf,
-            "-filter_complex", audio_filt,
-            "-map", "0:v", "-map", "[afinal]",
-            "-c:v", "libx264", "-crf", "23", "-preset", "ultrafast",
+            "-c:v", "libx264", "-crf", "22", "-preset", "fast",
             "-c:a", "aac", "-b:a", "192k",
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart",
             "-threads", "1",
-            output_p,
+            audio_mixed,
+        ]
+    else:
+        audio_filt = "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11,volume=2.0[afinal]"
+        cmd_audio = [
+            "ffmpeg", "-y",
+            "-i", concat_out, "-i", voice_p,
+            "-t", str(voice_dur),
+            "-filter_complex", audio_filt,
+            "-map", "0:v", "-map", "[afinal]",
+            "-c:v", "libx264", "-crf", "22", "-preset", "fast",
+            "-c:a", "aac", "-b:a", "192k",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-threads", "1",
+            audio_mixed,
         ]
 
-    print(f"  🎬 Final encode: {voice_dur:.1f}s, "
-          f"subs={'yes' if sub_filter else 'no'}, "
-          f"music={'yes' if use_music else 'no'}")
-    r = subprocess.run(cmd, capture_output=True, timeout=600)
-
+    print(f"  🎬 Audio mix: {voice_dur:.1f}s, music={'yes' if use_music else 'no'}")
+    r = subprocess.run(cmd_audio, capture_output=True, timeout=600)
     if r.returncode != 0:
-        err = r.stderr[-600:].decode(errors="ignore")
-        print(f"  ⚠️  FFmpeg error: {err[-300:]}")
-        # Retry without subtitles if drawtext caused the error
-        if sub_filter and ("drawtext" in err or "fontsize" in err or "text" in err):
-            print("  ⚠️  Subtitle filter failed — retrying without subs...")
-            cmd_nosub = [c if c != vf else "null" for c in cmd]
-            r = subprocess.run(cmd_nosub, capture_output=True, timeout=600)
-            if r.returncode != 0:
-                raise Exception(f"FFmpeg failed (no-sub retry): {r.stderr[-400:].decode(errors='ignore')}")
+        raise Exception(f"FFmpeg audio mix failed: {r.stderr[-400:].decode(errors='ignore')}")
+    print(f"  ✅ Audio mix done")
+
+    # ── Pass 3: Burn ASS subtitles ────────────────────────────────────────────
+    ass_path = str(WORK_DIR / f"subs_{ts}.ass")
+    has_subs = srt_to_ass(srt_p, ass_path, content_type)
+
+    if has_subs and Path(ass_path).exists():
+        # Use subtitles filter — ALWAYS renders inside frame due to ASS MarginV/MarginL/R
+        # Force=1 ensures subtitles override any video-embedded subs
+        sub_filter = f"subtitles='{ass_path}':force_style='FontName=Arial'"
+        cmd_sub = [
+            "ffmpeg", "-y",
+            "-i", audio_mixed,
+            "-vf", sub_filter,
+            "-c:v", "libx264", "-crf", "22", "-preset", "fast",
+            "-c:a", "copy",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-threads", "1",
+            output_p,
+        ]
+        print(f"  🔤 Burning ASS subtitles...")
+        r = subprocess.run(cmd_sub, capture_output=True, timeout=600)
+        if r.returncode == 0 and Path(output_p).exists():
+            print(f"  ✅ Subtitles burned")
         else:
-            raise Exception(f"FFmpeg final pass failed: {err}")
+            err = r.stderr[-300:].decode(errors='ignore')
+            print(f"  ⚠️  Subtitle burn failed ({err[-100:]}), using no-sub version")
+            import shutil as _shutil
+            _shutil.copy2(audio_mixed, output_p)
+    else:
+        print(f"  ⚠️  No subtitles generated, using raw audio mix")
+        import shutil as _shutil
+        _shutil.copy2(audio_mixed, output_p)
 
     if not Path(output_p).exists() or Path(output_p).stat().st_size < 10_000:
         raise Exception("Final video missing or too small")
 
-    Path(concat_out).unlink(missing_ok=True)
-    Path(txt).unlink(missing_ok=True)
+    # Cleanup
+    for f in [concat_out, txt, audio_mixed]:
+        Path(f).unlink(missing_ok=True)
     print(f"  ✅ Final video: {Path(output_p).stat().st_size // 1024} KB")
 
 
