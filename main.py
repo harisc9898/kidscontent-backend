@@ -510,54 +510,82 @@ def generate_image_pollinations(scene: str, output_path: str) -> bool:
             f"?width=1080&height=1920&nologo=true&model=flux"
             f"&seed={random.randint(1000, 99999)}"
         )
-        r = requests.get(url, timeout=120)
+        # Hard 45s timeout — Render free tier kills process after ~2min
+        r = requests.get(url, timeout=45)
         if r.status_code == 200 and len(r.content) > 5000:
             Path(output_path).write_bytes(r.content)
             return True
+    except requests.exceptions.Timeout:
+        print(f"  Pollinations timed out after 45s")
     except Exception as e:
         print(f"  Pollinations failed: {e}")
     return False
 
 
+def generate_solid_fallback(output_path: str) -> bool:
+    """Create a solid colored background image using FFmpeg — always works, zero network."""
+    colors = ["0x1a1a4e", "0x0d3b2e", "0x2d1b4e", "0x1a2e4e", "0x3b1a2e"]
+    color = random.choice(colors)
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi",
+        "-i", f"color=c={color}:size=1080x1920:rate=1",
+        "-frames:v", "1",
+        "-update", "1",
+        output_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, timeout=15)
+    return result.returncode == 0
+
+
 def generate_image(scene: str, output_path: str) -> str:
-    """Try ModelsLab first, fall back to Pollinations."""
-    # Try ModelsLab (best quality)
+    """Try ModelsLab → Pollinations → solid color fallback. Never returns None."""
+    # Try ModelsLab (best quality, 100 free/day)
     if MODELSLAB_API_KEY and generate_image_modelslab(scene, output_path):
         pipeline_status["image_source"] = "ModelsLab"
         return "modelslab"
-    # Fallback to Pollinations (unlimited free)
+    # Try Pollinations (free, but can be slow)
     if generate_image_pollinations(scene, output_path):
         pipeline_status["image_source"] = "Pollinations"
         return "pollinations"
+    # Ultimate fallback: solid color — always works, zero network needed
+    print("  ⚡ Using solid color fallback (no network needed)")
+    if generate_solid_fallback(output_path):
+        pipeline_status["image_source"] = "Fallback"
+        return "fallback"
     return None
 
 
 def build_scene_clip(scene: str, duration: float, output_path: str) -> bool:
-    """Generate image then animate with Ken Burns motion effect."""
+    """Generate image then create video clip — optimized for free tier CPU."""
     img_path = output_path.replace(".mp4", ".jpg")
     source = generate_image(scene, img_path)
     if not source:
         return False
 
-    frames = int(duration * 25)
-    kb_effects = [
-        "zoompan=z='zoom+0.0015':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
-        "zoompan=z='if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",
-        "zoompan=z='zoom+0.001':x='min(max(0,iw/2-(iw/zoom/2)+4*on),iw-iw/zoom)':y='ih/2-(ih/zoom/2)'",
-        "zoompan=z='zoom+0.001':x='max(0,iw/2-(iw/zoom/2)-4*on)':y='ih/2-(ih/zoom/2)'",
-    ]
+    # Use simple loop + fade — much faster than zoompan on limited CPU
+    # zoompan processes every frame individually and is very slow on free tier
     cmd = [
-        "ffmpeg", "-y", "-loop", "1", "-i", img_path,
+        "ffmpeg", "-y",
+        "-loop", "1",
+        "-i", img_path,
         "-vf", (
-            f"scale=1080:1920:force_original_aspect_ratio=decrease,"
-            f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0x1a1a2e,"
-            f"{random.choice(kb_effects)}:d={frames}:s=1080x1920:fps=25"
+            "scale=1080:1920:force_original_aspect_ratio=decrease,"
+            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0x1a1a2e,"
+            "format=yuv420p"
         ),
         "-t", str(duration),
-        "-c:v", "libx264", "-crf", "22", "-preset", "fast",
-        "-pix_fmt", "yuv420p", "-an", output_path,
+        "-c:v", "libx264",
+        "-crf", "28",
+        "-preset", "ultrafast",   # fastest possible encode
+        "-pix_fmt", "yuv420p",
+        "-an",
+        "-tune", "stillimage",    # optimized for still image video
+        output_path,
     ]
-    result = subprocess.run(cmd, capture_output=True, timeout=180)
+    result = subprocess.run(cmd, capture_output=True, timeout=120)
+    if result.returncode != 0:
+        print(f"  FFmpeg error: {result.stderr[-300:]}")
     Path(img_path).unlink(missing_ok=True)
     return result.returncode == 0
 
@@ -777,17 +805,27 @@ def full_pipeline(topic: Optional[str], content_type: Optional[str]):
         audio_dur = get_duration(voice_p)
         scene_dur = min(audio_dur / max(len(data["scenes"]), 1), 12.0)
 
-        # 3 — Scene images + Ken Burns animation
+        # 3 — Scene images — use max 3 scenes for speed on free tier
         pipeline_status["step"] = "Generating scene images..."
         pipeline_status["step_index"] = 3
+        scenes = data["scenes"][:3]  # cap at 3 for speed on Render free tier
+        scene_dur = min(audio_dur / max(len(scenes), 1), 15.0)
         clips = []
-        for i, scene in enumerate(data["scenes"]):
+        for i, scene in enumerate(scenes):
             out = str(session / f"scene_{i}.mp4")
-            if build_scene_clip(scene, scene_dur, out):
-                clips.append(out)
-                print(f"  ✅ Scene {i+1}/5 ({pipeline_status['image_source']})")
+            print(f"  🎨 Scene {i+1}/{len(scenes)}: {scene[:50]}")
+            try:
+                ok = build_scene_clip(scene, scene_dur, out)
+                if ok and Path(out).exists() and Path(out).stat().st_size > 1000:
+                    clips.append(out)
+                    print(f"  ✅ Scene {i+1} done ({pipeline_status.get('image_source','?')})")
+                else:
+                    print(f"  ⚠️  Scene {i+1} produced empty file, skipping")
+            except Exception as e:
+                print(f"  ⚠️  Scene {i+1} exception: {e}")
+                continue
         if not clips:
-            raise Exception("All scene generation failed")
+            raise Exception("All scene generation failed — check Pollinations.AI availability")
 
         # 4 — Music
         pipeline_status["step"] = "Generating background music..."
