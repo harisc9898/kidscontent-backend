@@ -17,7 +17,7 @@ Upload: YouTube Data API v3 (FREE, 6/day)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-import os, json, time, random, asyncio, subprocess, re, shutil
+import os, json, time, random, asyncio, subprocess, re, shutil, io
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List
@@ -280,30 +280,40 @@ def generate_content(topic: Optional[str], content_type: Optional[str]) -> dict:
     print(f"✅ Content generated via {llm_used}")
     pipeline_status["llm_used"] = llm_used
 
-    # Parse JSON response — robust cleaning pipeline
+    # ── Nuclear JSON cleaning pipeline ───────────────────────────────────────
+    # Step 1: strip markdown fences
     raw = re.sub(r"^```[a-z]*\n?", "", raw.strip()).rstrip("`").strip()
 
-    # Extract JSON block if LLM added extra text before/after
+    # Step 2: extract just the {...} block — ignore any text before/after
     json_match = re.search(r'\{[\s\S]*\}', raw)
     if json_match:
         raw = json_match.group(0)
 
-    # Remove ALL invalid control characters (the main cause of this error)
-    # Keep only: tab(\t), newline(\n), carriage return(\r) — remove everything else 0x00-0x1f
-    raw = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', raw)
+    # Step 3: encode/decode to strip any non-UTF8 bytes
+    raw = raw.encode('utf-8', errors='ignore').decode('utf-8')
 
-    # Fix common LLM JSON mistakes
-    raw = raw.replace('\r\n', '\\n').replace('\r', '\\n')
+    # Step 4: remove ALL control characters except tab, newline, carriage return
+    raw = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', raw)
 
-    # Remove trailing commas before } or ] (invalid JSON)
+    # Step 5: fix Windows line endings
+    raw = raw.replace('\r\n', '\n').replace('\r', '\n')
+
+    # Step 6: remove trailing commas before } or ]
     raw = re.sub(r',\s*([}\]])', r'\1', raw)
 
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        # Last resort: use ast-style aggressive cleaning
-        raw_clean = raw.encode('utf-8', errors='ignore').decode('utf-8')
-        data = json.loads(raw_clean)
+    # Step 7: parse with multiple fallback strategies
+    data = None
+    errors = []
+    for attempt, text in enumerate([raw, raw.replace('\n', ' '), re.sub(r'\s+', ' ', raw)]):
+        try:
+            data = json.loads(text)
+            break
+        except json.JSONDecodeError as e:
+            errors.append(f"Attempt {attempt+1}: {e}")
+            continue
+
+    if data is None:
+        raise Exception(f"JSON parse failed after all attempts. Errors: {errors}. Raw: {raw[:200]}")
     data["topic"] = topic
     data["content_type"] = content_type
     data["llm_used"] = llm_used
@@ -311,18 +321,77 @@ def generate_content(topic: Optional[str], content_type: Optional[str]) -> dict:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# STEP 2 — EDGE TTS VOICE (Microsoft Neural — FREE forever, no key)
+# STEP 2 — TTS VOICE: gTTS (primary) + edge-tts (fallback)
+# gTTS: Google Translate TTS — no API key, works on all servers, FREE
+# edge-tts: Microsoft Neural — better quality but sometimes 403 on cloud
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-VOICE_PROFILES = {
-    "cheerful":  {"voice": "en-US-AriaNeural",    "rate": "+8%",  "pitch": "+10Hz"},
-    "gentle":    {"voice": "en-GB-SoniaNeural",   "rate": "-8%",  "pitch": "-2Hz"},
-    "energetic": {"voice": "en-US-GuyNeural",     "rate": "+10%", "pitch": "+5Hz"},
-    "soothing":  {"voice": "en-GB-LibbyNeural",   "rate": "-12%", "pitch": "-4Hz"},
-    "default":   {"voice": "en-US-JennyNeural",   "rate": "+3%",  "pitch": "+3Hz"},
-}
+
+def _generate_srt_from_text(text: str, audio_duration: float, srt_path: str):
+    """Generate a simple word-timed SRT from text + total duration."""
+    words = text.split()
+    if not words:
+        Path(srt_path).write_text("")
+        return
+    time_per_word = audio_duration / len(words)
+    lines = []
+    idx = 1
+    chunk_size = 4  # words per subtitle line
+    for i in range(0, len(words), chunk_size):
+        chunk = words[i:i+chunk_size]
+        start = i * time_per_word
+        end = min((i + chunk_size) * time_per_word, audio_duration)
+        def fmt(s):
+            h = int(s // 3600)
+            m = int((s % 3600) // 60)
+            sec = int(s % 60)
+            ms = int((s - int(s)) * 1000)
+            return f"{h:02d}:{m:02d}:{sec:02d},{ms:03d}"
+        lines.append(str(idx))
+        lines.append(f"{fmt(start)} --> {fmt(end)}")
+        lines.append(" ".join(chunk))
+        lines.append("")
+        idx += 1
+    Path(srt_path).write_text("\n".join(lines), encoding="utf-8")
 
 
-async def _tts_async(text, voice, rate, pitch, audio_out, srt_out):
+def generate_voice_gtts(content: str, voice_style: str,
+                        audio_path: str, srt_path: str) -> bool:
+    """gTTS — Google Translate TTS, no API key, works reliably on all servers."""
+    try:
+        from gtts import gTTS
+        # Choose language variant based on style
+        tld_map = {
+            "cheerful": "com",   # US English
+            "gentle":   "co.uk", # British English
+            "energetic":"com.au",# Australian English
+            "soothing": "co.uk", # British
+        }
+        tld = tld_map.get(voice_style, "com")
+        slow = voice_style in ("gentle", "soothing")
+        tts = gTTS(text=content, lang="en", tld=tld, slow=slow)
+        tts.save(audio_path)
+        # Generate timing-based SRT
+        duration = _get_audio_duration_quick(audio_path)
+        _generate_srt_from_text(content, duration, srt_path)
+        print(f"✅ Voice: gTTS ({voice_style}, tld={tld})")
+        return True
+    except Exception as e:
+        print(f"  gTTS failed: {e}")
+        return False
+
+
+def _get_audio_duration_quick(path: str) -> float:
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", path],
+            capture_output=True, text=True, timeout=15)
+        return float(r.stdout.strip())
+    except Exception:
+        return 30.0
+
+
+async def _edge_tts_async(text, voice, rate, pitch, audio_out, srt_out):
     import edge_tts
     comm = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
     sub = edge_tts.SubMaker()
@@ -336,17 +405,42 @@ async def _tts_async(text, voice, rate, pitch, audio_out, srt_out):
         f.write(sub.get_srt())
 
 
+EDGE_PROFILES = {
+    "cheerful":  {"voice": "en-US-AriaNeural",  "rate": "+8%",  "pitch": "+10Hz"},
+    "gentle":    {"voice": "en-GB-SoniaNeural", "rate": "-8%",  "pitch": "-2Hz"},
+    "energetic": {"voice": "en-US-GuyNeural",   "rate": "+10%", "pitch": "+5Hz"},
+    "soothing":  {"voice": "en-GB-LibbyNeural", "rate": "-12%", "pitch": "-4Hz"},
+    "default":   {"voice": "en-US-JennyNeural", "rate": "+3%",  "pitch": "+3Hz"},
+}
+
+
+def generate_voice_edge(content: str, voice_style: str,
+                        audio_path: str, srt_path: str) -> bool:
+    """edge-tts fallback — higher quality but may 403 on some servers."""
+    try:
+        profile = EDGE_PROFILES.get(voice_style, EDGE_PROFILES["default"])
+        asyncio.run(_edge_tts_async(
+            text=content, voice=profile["voice"],
+            rate=profile["rate"], pitch=profile["pitch"],
+            audio_out=audio_path, srt_out=srt_path,
+        ))
+        print(f"✅ Voice: edge-tts {profile['voice']}")
+        return True
+    except Exception as e:
+        print(f"  edge-tts failed: {e}")
+        return False
+
+
 def generate_voice(content: str, voice_style: str, audio_path: str, srt_path: str):
-    profile = VOICE_PROFILES.get(voice_style, VOICE_PROFILES["default"])
-    asyncio.run(_tts_async(
-        text=content,
-        voice=profile["voice"],
-        rate=profile["rate"],
-        pitch=profile["pitch"],
-        audio_out=audio_path,
-        srt_out=srt_path,
-    ))
-    print(f"✅ Voice: {profile['voice']} ({voice_style})")
+    """Try gTTS first (reliable on all servers), fall back to edge-tts."""
+    # Primary: gTTS — works reliably on Render/cloud servers
+    if generate_voice_gtts(content, voice_style, audio_path, srt_path):
+        return
+    # Fallback: edge-tts
+    print("⚡ Falling back to edge-tts...")
+    if generate_voice_edge(content, voice_style, audio_path, srt_path):
+        return
+    raise Exception("All TTS providers failed (gTTS + edge-tts both failed)")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
