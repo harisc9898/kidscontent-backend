@@ -524,18 +524,23 @@ def generate_image_pollinations(scene: str, output_path: str) -> bool:
 
 def generate_solid_fallback(output_path: str) -> bool:
     """Create a solid colored background image using FFmpeg — always works, zero network."""
-    colors = ["0x1a1a4e", "0x0d3b2e", "0x2d1b4e", "0x1a2e4e", "0x3b1a2e"]
+    colors = ["0x1a3a6e", "0x0d3b2e", "0x2d1b4e", "0x1a2e4e", "0x3b1a2e",
+              "0x006994", "0x2d6a4f", "0x9b59b6"]
     color = random.choice(colors)
+    # Use PNG output for reliability then convert to jpg if needed
+    out = output_path if output_path.endswith(".jpg") else output_path
     cmd = [
         "ffmpeg", "-y",
         "-f", "lavfi",
-        "-i", f"color=c={color}:size=1080x1920:rate=1",
+        "-i", f"color=c={color}:size=1080x1920:duration=1",
         "-frames:v", "1",
-        "-update", "1",
-        output_path,
+        "-vf", "format=yuvj420p",
+        out,
     ]
     result = subprocess.run(cmd, capture_output=True, timeout=15)
-    return result.returncode == 0
+    if result.returncode != 0:
+        print(f"  Solid fallback ffmpeg error: {result.stderr[-200:]}")
+    return result.returncode == 0 and Path(out).exists() and Path(out).stat().st_size > 100
 
 
 def generate_image(scene: str, output_path: str) -> str:
@@ -606,12 +611,16 @@ def generate_music(content_type: str, music_path: str) -> bool:
     style = MUSIC_STYLES.get(content_type, MUSIC_STYLES["default"])
     url = f"https://audio.pollinations.ai/{requests.utils.quote(style)}"
     try:
-        r = requests.get(url, timeout=120)
+        # 30s timeout max — music is optional, don't let it block the pipeline
+        r = requests.get(url, timeout=30)
         if r.status_code == 200 and len(r.content) > 1000:
             Path(music_path).write_bytes(r.content)
+            print("✅ Music generated")
             return True
+    except requests.exceptions.Timeout:
+        print("  Music timed out — continuing without music")
     except Exception as e:
-        print(f"Music gen failed: {e}")
+        print(f"  Music failed: {e}")
     return False
 
 
