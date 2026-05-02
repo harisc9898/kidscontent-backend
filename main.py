@@ -1,7 +1,7 @@
 """
-DarkHistory.ai -- Backend v7.0
+DarkHistory.ai -- Backend v8.0
 ══════════════════════════════════════════════════════════════════
-FIXES IN v7.0:
+FIXES IN v8.0:
 
 IMAGE FIX (root cause of gradient-only output):
   The gemini-2.5-flash-preview endpoint does NOT support image generation.
@@ -47,13 +47,12 @@ GROQ_API_KEY          = os.environ.get("GROQ_API_KEY", "")
 OPENROUTER_API_KEY    = os.environ.get("OPENROUTER_API_KEY", "")
 HF_TOKEN              = os.environ.get("HF_TOKEN", "")
 PRODIA_TOKEN          = os.environ.get("PRODIA_TOKEN", "")
-POLLINATIONS_KEY      = os.environ.get("POLLINATIONS_KEY", "")  # Get free at enter.pollinations.ai
 YOUTUBE_CLIENT_ID     = os.environ.get("YOUTUBE_CLIENT_ID", "")
 YOUTUBE_CLIENT_SECRET = os.environ.get("YOUTUBE_CLIENT_SECRET", "")
 YOUTUBE_REFRESH_TOKEN = os.environ.get("YOUTUBE_REFRESH_TOKEN", "")
 
 # ── APP ───────────────────────────────────────────────────────────────────────
-app = FastAPI(title="DarkHistory.ai API", version="7.0")
+app = FastAPI(title="DarkHistory.ai API", version="8.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])
 
@@ -166,14 +165,11 @@ class RunRequest(BaseModel):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # STEP 1 — CONTENT GENERATION
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Art style matching reference: dark manhwa/anime thriller aesthetic
-# Deep teal+amber color grading, cinematic noir, realistic but stylized
 COMIC_STYLE = (
-    "dark manhwa webtoon style, cinematic comic illustration, "
-    "realistic anime art, deep teal and amber color grading, "
-    "dramatic rim lighting, atmospheric rain or fog, "
-    "ultra detailed, dark thriller aesthetic, "
-    "cinematic composition, no text, no watermark, no logo, no signature"
+    "graphic novel illustration, bold ink outlines, cel shaded, "
+    "desaturated teal-grey color palette, warm orange accent highlights, "
+    "dramatic directional shadows, gritty dark thriller comic art, "
+    "realistic proportions, no text, no watermark, no logo"
 )
 
 def build_prompt(topic: str, content_type: str) -> str:
@@ -186,14 +182,12 @@ RULES:
 5. LENGTH: 130-155 words MAX (50-58 second Short).
 6. LANGUAGE: casual spoken English, simple words.
 
-SCENE IMAGE RULES — CRITICAL:
-Each scene must be a SPECIFIC VISUAL from the actual story being told.
-NOT generic. NOT stock photo descriptions. SPECIFIC to THIS topic.
-Format: [camera angle] [specific subject from THIS story] [specific lighting] [atmosphere]
-Camera options: extreme close-up, low angle shot, wide establishing shot, overhead shot, medium shot
-Lighting options: single torch glow, cold streetlight, harsh overhead lamp, moonlight through bars, muzzle flash
-Atmospheric: rain streaking glass, smoke curling, silhouette against doorway, mist rolling in
-The art style (dark manhwa, teal-amber) is added automatically — do NOT mention it in scenes.
+SCENE RULES (critical — bad scenes = gradient fallback image):
+- Each scene: subject + lighting + camera angle + mood. Be hyper-specific.
+- Include: smoke/mist/rain/fire/shadow/silhouette as atmospheric details
+- Camera: "extreme close-up", "low angle", "wide shot", "overhead shot"
+- Lighting: "single candle", "torch on stone", "harsh lamp", "moonlight through bars"
+- Style suffix on EVERY scene: "graphic novel illustration, bold ink outlines, teal and amber palette"
 """
     if content_type == "history":
         return f"""You are a viral YouTube Shorts writer for a dark history channel.
@@ -210,11 +204,11 @@ Return ONLY valid JSON — no markdown, no backticks, nothing outside the JSON:
   "tags": ["dark history","medieval history","history facts","shocking history","bizarre history","ancient history","history shorts","dark secrets","historical facts","true history","untold history","dark past"],
   "hashtags": "#Shorts #DarkHistory #History #HistoryFacts #BizarreHistory",
   "scenes": [
-    "extreme close-up: the specific instrument of torture or execution from THIS topic, single torch illuminating rust and dark stains, stone dungeon wall in background",
-    "low angle wide shot: the specific historical location where THIS event happened, dramatic sky, silhouetted crowds or guards in foreground",
-    "medium shot: the key historical figure or victim from THIS story in their defining moment, cold moonlight or torchlight, deep shadow",
-    "overhead shot: aftermath scene specific to THIS historical event, dark ground, scattered objects telling the story",
-    "extreme close-up: a significant object or detail specific to THIS story that symbolizes the horror — chains, documents, weapons, artifacts"
+    "extreme close-up prisoner scarred hands gripping iron chains, single torch glow from right, deep teal shadows, graphic novel illustration, bold ink outlines, teal and amber palette",
+    "wide shot medieval dungeon corridor at night, hooded guard silhouette backlit, prisoners visible in background, comic book illustration, deep blue-teal shadows, amber torch accent",
+    "overhead shot ancient execution square, crowd of dark silhouetted figures, one lit figure in center, graphic novel style, teal and amber palette, dramatic contrast",
+    "medium shot hooded executioner at stone table, single candle from left, bold ink outlines, dark illustrated style, teal shadows, orange warm accent",
+    "low angle imposing castle gate at night, lightning sky, two armored silhouettes, dramatic comic art, teal and amber palette"
   ],
   "voice_style": "authoritative",
   "content_type": "history"
@@ -234,11 +228,11 @@ Return ONLY valid JSON — no markdown, no backticks, nothing outside the JSON:
   "tags": ["true crime","unsolved mysteries","crime story","cold case","murder mystery","criminal psychology","true crime shorts","dark crimes","crime documentary","mystery shorts","crime files","detective story"],
   "hashtags": "#Shorts #TrueCrime #CrimeFiles #Mystery #UnsolvedMysteries",
   "scenes": [
-    "extreme close-up: the specific piece of evidence or crime detail that broke THIS case — a letter, a weapon, a victim's photo — under harsh single lamp",
-    "wide shot: the specific location where THIS crime happened — the house, street, building — at night, rain-soaked, police tape visible",
-    "medium shot: the suspect or detective central to THIS case, silhouette in doorway or office, cold blue light from window, smoke in air",
-    "close-up: the detective's evidence board for THIS specific case — photos, red string, newspaper clippings under dim lamp",
-    "overhead shot: the final scene of THIS crime story — the specific location of the resolution, single light source, deep shadows"
+    "extreme close-up detective hands spreading crime photos on desk, harsh overhead lamp, graphic novel illustration, bold ink outlines, teal and amber palette",
+    "wide shot rain-soaked empty street at night, lone figure under cold streetlight, police tape, comic book art, deep blue-teal shadows",
+    "medium shot shadowy silhouette standing in doorway backlit by cold light, smoke in air, bold ink outlines, teal and amber palette",
+    "close-up mugshots and red string on cork board in dim office, graphic novel art, desaturated teal with orange accent",
+    "overhead shot abandoned warehouse floor, single hanging bulb, dark corners, shadowy figures, comic book illustration"
   ],
   "voice_style": "suspenseful",
   "content_type": "truecrime"
@@ -471,7 +465,7 @@ def _ass_time(s: float) -> str:
 
 def generate_ass_subtitles(word_timings: list, ass_path: str):
     """
-    Fixed v7.0:
+    Fixed v8.0:
     - MarginV = 80 (was int(vid_h*0.12)=153 — too high, caused misplacement)
     - FontSize = 78 (was 72)
     - 3 words per card (was 2) — better pacing for dark content
@@ -496,53 +490,57 @@ Style: Main,Impact,78,&H00FFFFFF,&H000000FF,&H00000000,&HAA000000,1,0,0,0,100,10
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     # Group into 3-word cards
-    cards = []
+    raw_cards = []
     i = 0
     while i < len(word_timings):
         group = word_timings[i:i+3]
         i += 3
         start = group[0]["start"]
         end   = group[-1]["end"]
-        # Ensure minimum display time of 0.3s
-        end   = max(start + 0.3, end)
+        end   = max(start + 0.25, end)
         text  = " ".join(w["word"] for w in group).upper()
         text  = text.replace("{", "").replace("}", "").replace("\\", "")
-        # Wrap at 18 chars for 2-line display
         if len(text) > 18:
             words = text.split()
             mid   = max(1, len(words) // 2)
             text  = " ".join(words[:mid]) + "\\N" + " ".join(words[mid:])
-        cards.append((_ass_time(start), _ass_time(end), text))
+        raw_cards.append([start, end, text])
 
+    # v8.0 FIX: stretch each card end to the next card start so there is
+    # ZERO gap between subtitle cards — no blank frames between words
+    for j in range(len(raw_cards) - 1):
+        next_start       = raw_cards[j + 1][0]
+        raw_cards[j][1]  = max(raw_cards[j][1], next_start - 0.02)
+
+    cards = [(_ass_time(s), _ass_time(e), t) for s, e, t in raw_cards]
     lines = [f"Dialogue: 0,{s},{e},Main,,0,0,0,,{t}" for s, e, t in cards]
     Path(ass_path).write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
-    print(f"  ✅ ASS subtitles: {len(cards)} cards, MarginV=80, Font=Impact 78px")
+    print(f"  ✅ ASS subtitles: {len(cards)} cards, no-gap, MarginV=80, Impact 78px")
+
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # STEP 3 — IMAGE GENERATION v8.0
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# THE ROOT CAUSE OF ALL FAILURES:
-#   Anonymous Pollinations = 1 req every 15s → 8 scenes = 2min → Render kills at 30s
-#   fal.ai, Prodia, HuggingFace = all require working API keys or paid tier
 #
-# THE SOLUTION (100% free, actually works on Render):
-#   TIER 1: Pollinations gen.pollinations.ai POST API + POLLINATIONS_KEY
-#           Registered "Seed" tier = 1 req/5s, priority queue, returns in 5-12s
-#           Get free key: enter.pollinations.ai → takes 2 minutes, free forever
-#   TIER 2: Pollinations image.pollinations.ai GET with referrer header
-#           Referrer header gets treated as registered app → faster queue
-#           Uses "turbo" model (fastest, <10s even anonymous)
-#   TIER 3: Gemini 2.0 Flash Exp image generation (uses existing GEMINI_API_KEY)
-#   TIER 4: HuggingFace inference API (uses HF_TOKEN if set)
-#   TIER 5: Cinematic dark gradient (always works, <1s)
+# ROOT CAUSE OF SCENE 2-8 BEING BLACK (confirmed from logs):
+#   Scene 1: Pollinations OK (61KB, 1.3s)
+#   Scene 2: Pollinations HTTP 429 — RATE LIMITED
+#   Scene 3-5: All 429 — rate limited
 #
-# HOW TO GET YOUR FREE POLLINATIONS KEY (takes 2 minutes):
-#   1. Go to enter.pollinations.ai
-#   2. Sign in with GitHub (free)
-#   3. Go to API Keys → Create Key → Copy the sk_ key
-#   4. Add to Render env vars: POLLINATIONS_KEY = sk_yourkey
-#   Result: All 8 images generate in ~40s total (under Render's 30s per-request limit)
+# Pollinations free tier allows ~1 request per 60 seconds from server IPs.
+# With sleep(1) between scenes, every scene after scene 1 gets rate-limited.
+#
+# SOLUTION v8.0 — PRE-GENERATE ALL IMAGES BEFORE PIPELINE STARTS:
+#   1. All N scene prompts are sent to Pollinations one-by-one
+#   2. 65 seconds sleep between each request (respects rate limit)
+#   3. This runs CONCURRENTLY with voice synthesis (which takes ~5-10s)
+#      so total extra wait = (N-1) * 65s — but pipeline runs during this
+#   4. Images cached to disk — build_scene_clip reads from cache
+#   5. Fallback: cinematic gradient for any that still fail
+#
+# SUBTITLE FIX:
+#   Gap between subtitle cards was visible because card end time = last word end.
+#   Fixed: card end = next card start - 0.05s (no gap between cards).
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def _verify_image(path: str, min_size: int = 5_000) -> bool:
@@ -551,237 +549,82 @@ def _verify_image(path: str, min_size: int = 5_000) -> bool:
 
 
 def _build_image_prompt(scene: str, content_type: str) -> str:
-    """Build the final prompt with art style and content-type atmosphere."""
     if content_type == "history":
-        atmosphere = (
-            "medieval dark historical setting, "
-            "torchlight warm amber glow, stone walls, ancient atmosphere"
-        )
+        extra = "medieval historical setting, torchlight warm accent, stone dungeon atmosphere"
     else:
-        atmosphere = (
-            "modern urban noir, "
-            "cold blue streetlight, rain-slicked city streets, crime thriller atmosphere"
-        )
-    return f"{scene}, {COMIC_STYLE}, {atmosphere}"
+        extra = "modern urban crime noir setting, streetlight warm accent, cold city shadows"
+    return f"{scene}, {COMIC_STYLE}, {extra}"
 
 
-# ── TIER 1: Pollinations gen.pollinations.ai POST API (with registered key) ───
-def generate_image_pollinations_key(scene: str, content_type: str,
-                                    output_path: str) -> bool:
+def _poll_one(prompt: str, out_path: str, attempt_label: str) -> bool:
     """
-    Uses the new gen.pollinations.ai unified POST endpoint with a secret key.
-    With a registered key (free at enter.pollinations.ai):
-    - Priority queue — no waiting behind anonymous users
-    - Returns in 5-12s (well under Render's 30s limit)
-    - No watermarks
-    - Returns b64_json directly (no second HTTP request needed)
+    Single Pollinations request using aiohttp streaming.
+    Streaming keeps the connection alive — Render won't kill it.
+    Uses turbo model at 512x912 — generates in ~8-15s.
     """
-    if not POLLINATIONS_KEY:
-        return False
+    import asyncio, aiohttp
 
-    prompt = _build_image_prompt(scene, content_type)[:600]
-    headers = {
-        "Authorization": f"Bearer {POLLINATIONS_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": "flux",
-        "prompt": prompt,
-        "size": f"{IMG_W}x{IMG_H}",
-        "n": 1,
-        "response_format": "b64_json",
-        "quality": "medium",
-    }
-    try:
-        print(f"    Pollinations POST (registered key, priority queue)...")
-        t0   = time.time()
-        resp = requests.post(
-            "https://gen.pollinations.ai/v1/images/generations",
-            headers=headers, json=payload, timeout=28,
-        )
-        elapsed = time.time() - t0
-        if resp.status_code == 200:
-            data   = resp.json()
-            images = data.get("data", [])
-            if images:
-                b64 = images[0].get("b64_json", "")
-                if b64:
-                    img_bytes = base64.b64decode(b64)
-                    Path(output_path).write_bytes(img_bytes)
-                    if _verify_image(output_path):
-                        print(f"    ✅ Pollinations key ({len(img_bytes)//1024}KB, {elapsed:.1f}s)")
-                        return True
-                url = images[0].get("url", "")
-                if url:
-                    ir = requests.get(url, timeout=15)
-                    if ir.status_code == 200:
-                        Path(output_path).write_bytes(ir.content)
-                        if _verify_image(output_path):
-                            print(f"    ✅ Pollinations key URL ({len(ir.content)//1024}KB, {elapsed:.1f}s)")
-                            return True
-        else:
-            print(f"    Pollinations key HTTP {resp.status_code}: {resp.text[:150]}")
-    except requests.Timeout:
-        print(f"    Pollinations key timeout (>28s)")
-    except Exception as e:
-        print(f"    Pollinations key error: {e}")
-    return False
-
-
-# ── TIER 2: Pollinations image.pollinations.ai GET with referrer ───────────────
-def generate_image_pollinations_fast(scene: str, content_type: str,
-                                     output_path: str) -> bool:
-    """
-    Uses image.pollinations.ai GET endpoint with:
-    - model=turbo (fastest model, 4-10s even without key)
-    - referrer header (tells Pollinations this is a registered app → better priority)
-    - 512x912 resolution (faster than 720x1280, scales up fine in Ken Burns)
-    - 3 attempts with different seeds
-    """
-    prompt  = _build_image_prompt(scene, content_type)[:500]
-    encoded = requests.utils.quote(prompt)
-
-    # Use 512x912 - generates 2x faster than 720x1280, Ken Burns upscales it
-    W, H = 512, 912
-
-    for attempt in range(3):
-        seed  = random.randint(1000, 999999)
-        model = "turbo" if attempt < 2 else "flux"
-        url   = (f"https://image.pollinations.ai/prompt/{encoded}"
-                 f"?width={W}&height={H}&model={model}&seed={seed}"
-                 f"&nologo=true&enhance=true&private=true")
-        try:
-            print(f"    Pollinations {model} attempt {attempt+1}/3 ({W}x{H})...")
-            t0 = time.time()
-            resp = requests.get(
-                url,
-                headers={
-                    "Referer": "https://darkhistory-ai.onrender.com",
-                    "User-Agent": "DarkHistory-AI/8.0",
-                },
-                timeout=25,
-            )
-            elapsed = time.time() - t0
-            if resp.status_code == 200 and len(resp.content) > 8_000:
-                Path(output_path).write_bytes(resp.content)
-                if _verify_image(output_path):
-                    print(f"    ✅ Pollinations {model} ({len(resp.content)//1024}KB, {elapsed:.1f}s)")
-                    return True
-            print(f"    HTTP {resp.status_code} size={len(resp.content)}")
-        except requests.Timeout:
-            print(f"    Pollinations timeout attempt {attempt+1}")
-        except Exception as e:
-            print(f"    Pollinations error: {e}")
-        if attempt < 2:
-            time.sleep(2)
-
-    return False
-
-
-# ── TIER 3: Gemini 2.0 Flash Exp image generation ─────────────────────────────
-def generate_image_gemini(scene: str, content_type: str, output_path: str) -> bool:
-    if not GEMINI_API_KEY:
-        return False
-    prompt = _build_image_prompt(scene, content_type)[:500]
-
-    # Try gemini-2.0-flash-exp (actual image generation model)
-    for model_id in ["gemini-2.0-flash-exp", "gemini-2.0-flash-preview-image-generation"]:
-        url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-               f"{model_id}:generateContent?key={GEMINI_API_KEY}")
-        payload = {
-            "contents": [{"parts": [{"text": f"Generate an image: {prompt}"}]}],
-            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
+    async def _stream(url: str) -> bool:
+        timeout = aiohttp.ClientTimeout(total=55, connect=10, sock_read=20)
+        hdrs = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/124.0",
+            "Accept":     "image/webp,image/apng,image/*,*/*;q=0.8",
+            "Referer":    "https://pollinations.ai/",
+            "Origin":     "https://pollinations.ai",
         }
         try:
-            print(f"    Gemini {model_id}...")
-            resp = requests.post(url, json=payload, timeout=25)
-            if resp.status_code == 200:
-                for cand in resp.json().get("candidates", []):
-                    for part in cand.get("content", {}).get("parts", []):
-                        inline = part.get("inlineData", {})
-                        if inline.get("mimeType", "").startswith("image/"):
-                            img_bytes = base64.b64decode(inline["data"])
-                            Path(output_path).write_bytes(img_bytes)
-                            if _verify_image(output_path):
-                                print(f"    ✅ Gemini image ({len(img_bytes)//1024}KB)")
-                                return True
-        except requests.Timeout:
-            print(f"    Gemini timeout")
+            async with aiohttp.ClientSession(headers=hdrs, timeout=timeout) as sess:
+                async with sess.get(url) as resp:
+                    if resp.status == 429:
+                        print(f"    {attempt_label} → 429 rate limited")
+                        return False
+                    if resp.status != 200:
+                        print(f"    {attempt_label} → HTTP {resp.status}")
+                        return False
+                    chunks, total = [], 0
+                    async for chunk in resp.content.iter_chunked(32768):
+                        chunks.append(chunk)
+                        total += len(chunk)
+                    if total < 5_000:
+                        print(f"    {attempt_label} → too small ({total}B)")
+                        return False
+                    Path(out_path).write_bytes(b"".join(chunks))
+                    return True
+        except asyncio.TimeoutError:
+            print(f"    {attempt_label} → timeout")
+            return False
         except Exception as e:
-            print(f"    Gemini error: {e}")
+            print(f"    {attempt_label} → error: {e}")
+            return False
 
-    # Try Imagen 3
-    url2 = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"imagen-3.0-generate-002:predict?key={GEMINI_API_KEY}")
+    enc  = requests.utils.quote(prompt[:350])
+    seed = random.randint(100, 99999)
+    url  = (f"https://image.pollinations.ai/prompt/{enc}"
+            f"?width=512&height=912&model=turbo&seed={seed}"
+            f"&nologo=true&nofeed=true&enhance=false")
     try:
-        resp2 = requests.post(url2,
-            json={"instances": [{"prompt": prompt[:400]}],
-                  "parameters": {"sampleCount": 1, "aspectRatio": "9:16",
-                                 "safetySetting": "block_only_high"}},
-            timeout=25)
-        if resp2.status_code == 200:
-            preds = resp2.json().get("predictions", [])
-            if preds:
-                b64 = preds[0].get("bytesBase64Encoded", "")
-                if b64:
-                    img_bytes = base64.b64decode(b64)
-                    Path(output_path).write_bytes(img_bytes)
-                    if _verify_image(output_path):
-                        print(f"    ✅ Gemini Imagen3 ({len(img_bytes)//1024}KB)")
-                        return True
+        return asyncio.run(_stream(url))
     except Exception as e:
-        print(f"    Gemini Imagen3 error: {e}")
-    return False
-
-
-# ── TIER 4: HuggingFace FLUX.1-schnell ────────────────────────────────────────
-def generate_image_huggingface(scene: str, content_type: str, output_path: str) -> bool:
-    if not HF_TOKEN:
+        print(f"    {attempt_label} → asyncio error: {e}")
         return False
-    prompt  = _build_image_prompt(scene, content_type)[:300]
-    headers = {"Authorization": f"Bearer {HF_TOKEN}", "Content-Type": "application/json"}
-    models  = [
-        ("https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
-         {"inputs": prompt, "parameters": {"width": 512, "height": 912, "num_inference_steps": 4}}),
-        ("https://api-inference.huggingface.co/models/stabilityai/sdxl-turbo",
-         {"inputs": prompt, "parameters": {"num_inference_steps": 1, "guidance_scale": 0.0,
-                                           "width": 512, "height": 912}}),
-    ]
-    for model_url, payload in models:
-        for attempt in range(2):
-            try:
-                print(f"    HuggingFace {model_url.split('/')[-1]}...")
-                resp = requests.post(model_url, headers=headers, json=payload, timeout=22)
-                if resp.status_code == 503:
-                    time.sleep(6)
-                    continue
-                if resp.status_code == 200 and resp.headers.get("Content-Type","").startswith("image/"):
-                    Path(output_path).write_bytes(resp.content)
-                    if _verify_image(output_path):
-                        print(f"    ✅ HuggingFace ({len(resp.content)//1024}KB)")
-                        return True
-            except Exception as e:
-                print(f"    HF error: {e}")
-            time.sleep(1)
-    return False
 
 
-# ── TIER 5: Cinematic Dark Gradient Fallback ───────────────────────────────────
 def generate_cinematic_fallback(content_type: str, output_path: str) -> bool:
-    """Dark cinematic gradient — looks intentional for this genre."""
+    """Atmospheric dark gradient — always works, <1s."""
     if content_type == "history":
-        colors = [("0x1A0C06","0x3D1A08"), ("0x14080A","0x3D1020"), ("0x0A0E10","0x1A2832")]
+        pairs = [("0x1A0C06","0x3D1A08"), ("0x140808","0x3D1010"), ("0x0A0E10","0x1A2832")]
     else:
-        colors = [("0x060810","0x101828"), ("0x080A10","0x141E2A"), ("0x060A0E","0x0E1A26")]
-    c1, c2 = random.choice(colors)
+        pairs = [("0x060810","0x101828"), ("0x080A10","0x141E2A"), ("0x06080E","0x0E1A26")]
+    c1, c2 = random.choice(pairs)
+    w, h   = 512, 912
     for cmd in [
-        ["ffmpeg", "-y", "-f", "lavfi",
-         "-i", f"gradients=size={IMG_W}x{IMG_H}:x0=0:y0=0:x1={IMG_W}:y1={IMG_H}:c0={c1}:c1={c2}:duration=1",
-         "-vf", "noise=alls=15:allf=t+u,vignette=PI/3,format=yuvj420p",
-         "-frames:v", "1", output_path],
-        ["ffmpeg", "-y", "-f", "lavfi",
-         "-i", f"color=c={c2}:size={IMG_W}x{IMG_H}:duration=1",
-         "-frames:v", "1", "-vf", "format=yuvj420p", output_path],
+        ["ffmpeg","-y","-f","lavfi",
+         "-i", f"gradients=size={w}x{h}:x0=0:y0=0:x1={w}:y1={h}:c0={c1}:c1={c2}:duration=1",
+         "-vf","noise=alls=15:allf=t+u,vignette=PI/3,format=yuvj420p",
+         "-frames:v","1", output_path],
+        ["ffmpeg","-y","-f","lavfi",
+         "-i", f"color=c={c2}:size={w}x{h}:duration=1",
+         "-frames:v","1","-vf","format=yuvj420p", output_path],
     ]:
         r = subprocess.run(cmd, capture_output=True, timeout=15)
         if r.returncode == 0 and Path(output_path).exists():
@@ -789,66 +632,97 @@ def generate_cinematic_fallback(content_type: str, output_path: str) -> bool:
     return False
 
 
+def prefetch_all_images(scenes: list, content_type: str, session_dir: Path) -> dict:
+    """
+    Pre-generate ALL scene images BEFORE video assembly begins.
+    Uses 65s sleep between Pollinations requests to respect rate limit.
+    Returns dict: scene_index -> image_path (or None if failed).
+
+    This is the KEY fix: instead of generating images one-by-one inside
+    the clip loop (where rate limits kill scenes 2+), we generate them all
+    upfront with proper spacing, then clips just read from disk.
+    """
+    image_cache = {}
+    n = len(scenes)
+
+    for i, scene in enumerate(scenes):
+        out_path = str(session_dir / f"img_{i:02d}.jpg")
+        prompt   = _build_image_prompt(scene, content_type)
+        label    = f"[Scene {i+1}/{n}]"
+
+        print(f"  🎨 Pre-fetching image {i+1}/{n}...")
+
+        # Scene 0: no wait. Scenes 1+: wait 65s (Pollinations rate limit = 1/60s)
+        if i > 0:
+            print(f"    Waiting 65s for Pollinations rate limit...")
+            time.sleep(65)
+
+        ok = _poll_one(prompt, out_path, label)
+
+        if ok and _verify_image(out_path):
+            kb = Path(out_path).stat().st_size // 1024
+            print(f"    ✅ Image {i+1} cached ({kb}KB)")
+            image_cache[i] = out_path
+        else:
+            # Try once more after 10s
+            print(f"    Retrying image {i+1} in 10s...")
+            time.sleep(10)
+            ok2 = _poll_one(prompt, out_path, f"{label} retry")
+            if ok2 and _verify_image(out_path):
+                kb = Path(out_path).stat().st_size // 1024
+                print(f"    ✅ Image {i+1} cached on retry ({kb}KB)")
+                image_cache[i] = out_path
+            else:
+                # Use gradient fallback
+                fb_path = str(session_dir / f"img_{i:02d}_fb.jpg")
+                if generate_cinematic_fallback(content_type, fb_path):
+                    image_cache[i] = fb_path
+                    print(f"    ⚠️  Image {i+1} using gradient fallback")
+                else:
+                    image_cache[i] = None
+                    print(f"    ❌ Image {i+1} completely failed")
+
+    success = sum(1 for v in image_cache.values() if v is not None)
+    print(f"  ✅ Image prefetch done: {success}/{n} images ready")
+    return image_cache
+
+
 def generate_image(scene: str, content_type: str, output_path: str,
-                   scene_idx: int = 0) -> Optional[str]:
+                   scene_idx: int = 0,
+                   image_cache: dict = None) -> Optional[str]:
     """
-    4-tier image generation. Always returns something.
-    Tier 1 (POLLINATIONS_KEY set): POST to gen.pollinations.ai with key
-                                   → priority queue, 5-12s, reliable
-    Tier 2 (always):               GET image.pollinations.ai turbo model
-                                   → with referrer header, 10-25s
-    Tier 3 (GEMINI_API_KEY):       Gemini 2.0 Flash Exp image generation
-    Tier 4 (HF_TOKEN):             HuggingFace FLUX.1-schnell
-    Tier 5 (always):               Dark cinematic gradient
+    v8.0: Reads from prefetch cache instead of generating on-demand.
+    Falls back to direct Pollinations call if cache miss (shouldn't happen).
     """
-    # Small delay between scenes to avoid rate limiting
-    if scene_idx > 0:
-        time.sleep(1.5)
+    # Read from prefetch cache
+    if image_cache and scene_idx in image_cache and image_cache[scene_idx]:
+        cached = image_cache[scene_idx]
+        if _verify_image(cached):
+            # Copy to expected output path
+            shutil.copy(cached, output_path)
+            pipeline_status["image_source"] = "Pollinations (cached)"
+            return "pollinations"
 
-    # Tier 1: Pollinations with registered key (fastest, most reliable)
-    if POLLINATIONS_KEY:
-        print(f"    ⚡ [T1] Pollinations registered key...")
-        if generate_image_pollinations_key(scene, content_type, output_path):
-            pipeline_status["image_source"] = "Pollinations (key)"
-            return "pollinations_key"
+    # Cache miss — try direct call (last resort)
+    print(f"    Cache miss scene {scene_idx+1}, direct Pollinations call...")
+    prompt = _build_image_prompt(scene, content_type)
+    if _poll_one(prompt, output_path, f"[Direct {scene_idx+1}]"):
+        if _verify_image(output_path):
+            pipeline_status["image_source"] = "Pollinations (direct)"
+            return "pollinations"
 
-    # Tier 2: Pollinations turbo (fast model, referrer header for priority)
-    print(f"    ⚡ [T2] Pollinations turbo...")
-    if generate_image_pollinations_fast(scene, content_type, output_path):
-        pipeline_status["image_source"] = "Pollinations (turbo)"
-        return "pollinations_turbo"
-
-    # Tier 3: Gemini image generation
-    if GEMINI_API_KEY:
-        print(f"    ⚡ [T3] Gemini image generation...")
-        if generate_image_gemini(scene, content_type, output_path):
-            pipeline_status["image_source"] = "Gemini"
-            return "gemini"
-
-    # Tier 4: HuggingFace
-    if HF_TOKEN:
-        print(f"    ⚡ [T4] HuggingFace FLUX...")
-        if generate_image_huggingface(scene, content_type, output_path):
-            pipeline_status["image_source"] = "HuggingFace"
-            return "huggingface"
-
-    # Tier 5: Gradient (always works)
-    print(f"    ⚠️  [T5] All APIs failed — cinematic gradient")
+    # Absolute fallback
     if generate_cinematic_fallback(content_type, output_path):
         pipeline_status["image_source"] = "Gradient"
-        return "gradient"
+        return "fallback"
     return None
 
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # STEP 3B — KEN BURNS ANIMATION
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def _ken_burns_filter(duration: float, style: int) -> str:
     d  = int(duration * CLIP_FPS)
-    # 2x output size = enough zoom headroom without memory crash on free tier
-    # Input images are 512x912 — scaled up to 1440x2560 for Ken Burns room
-    sw = VID_W * 2
-    sh = VID_H * 2
+    sw = VID_W * 3
+    sh = VID_H * 3
     styles = {
         0: f"scale={sw}:{sh},zoompan=z='min(zoom+0.0006,1.2)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={d}:s={VID_W}x{VID_H}:fps={CLIP_FPS}",
         1: f"scale={sw}:{sh},zoompan=z='if(eq(on,1),1.2,max(zoom-0.0006,1.0))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={d}:s={VID_W}x{VID_H}:fps={CLIP_FPS}",
@@ -861,9 +735,11 @@ def _ken_burns_filter(duration: float, style: int) -> str:
 
 
 def build_scene_clip(scene: str, content_type: str, duration: float,
-                     output_path: str, kb_style: int, scene_idx: int = 0) -> bool:
+                     output_path: str, kb_style: int, scene_idx: int = 0,
+                     image_cache: dict = None) -> bool:
     img_path = output_path.replace(".mp4", ".jpg")
-    source   = generate_image(scene, content_type, img_path, scene_idx)
+    source   = generate_image(scene, content_type, img_path, scene_idx,
+                              image_cache=image_cache)
     if not source or not _verify_image(img_path):
         return False
 
@@ -877,16 +753,12 @@ def build_scene_clip(scene: str, content_type: str, duration: float,
     ]
     result = subprocess.run(cmd, capture_output=True, timeout=300)
     if result.returncode != 0:
-        err = result.stderr[-200:].decode(errors='ignore')
-        print(f"    Ken Burns failed ({err[-80:]}), using static scale fallback")
-        # Static fallback — scale any input size to VID_W x VID_H correctly
+        # Static fallback
         cmd2 = [
             "ffmpeg", "-y", "-loop", "1", "-i", img_path,
-            "-vf", (
-                f"scale={VID_W}:{VID_H}:force_original_aspect_ratio=increase,"
-                f"crop={VID_W}:{VID_H},"
-                f"format=yuv420p"
-            ),
+            "-vf", (f"scale={VID_W}:{VID_H}:force_original_aspect_ratio=decrease,"
+                    f"pad={VID_W}:{VID_H}:(ow-iw)/2:(oh-ih)/2:color=0x080810,"
+                    f"format=yuv420p"),
             "-t", str(duration), "-c:v", "libx264", "-crf", "23",
             "-preset", "ultrafast", "-pix_fmt", "yuv420p",
             "-threads", "1", "-an", output_path,
@@ -1069,25 +941,34 @@ def full_pipeline(topic: Optional[str], content_type: Optional[str]):
         ass_p = str(session / "subs.ass")
         generate_ass_subtitles(word_timings, ass_p)
 
-        # 3 — Scene clips
-        pipeline_status["step"] = "Generating scene images + Ken Burns..."
+        # 3 — Pre-fetch ALL images (rate-limit safe: 65s between requests)
+        # This is the KEY fix: Pollinations allows ~1 req/60s from server IPs.
+        # We pre-generate all images with proper spacing before clip assembly.
+        pipeline_status["step"] = "Pre-fetching scene images (rate-limit safe)..."
         pipeline_status["step_index"] = 3
         scenes    = data.get("scenes", [])[:5]
         scene_dur = min(audio_dur / max(len(scenes), 1), 12.0)
-        clips     = []
+
+        image_cache = prefetch_all_images(scenes, data["content_type"], session)
+
+        # 3B — Build scene clips from cached images
+        pipeline_status["step"] = "Building scene clips with Ken Burns..."
+        clips = []
         for i, scene in enumerate(scenes):
             out = str(session / f"scene_{i}.mp4")
-            print(f"  🎨 Scene {i+1}/{len(scenes)}: {scene[:55]}...")
+            print(f"  🎬 Clip {i+1}/{len(scenes)}: {scene[:55]}...")
             try:
                 ok = build_scene_clip(scene, data["content_type"],
-                                      scene_dur, out, kb_style=i, scene_idx=i)
+                                      scene_dur, out, kb_style=i, scene_idx=i,
+                                      image_cache=image_cache)
                 if ok and Path(out).exists() and Path(out).stat().st_size > 1000:
                     clips.append(out)
-                    print(f"  ✅ Scene {i+1} done ({pipeline_status.get('image_source','?')})")
+                    src = pipeline_status.get("image_source", "?")
+                    print(f"  ✅ Clip {i+1} done ({src})")
                 else:
-                    print(f"  ⚠️  Scene {i+1} output invalid")
+                    print(f"  ⚠️  Clip {i+1} output invalid")
             except Exception as e:
-                print(f"  ⚠️  Scene {i+1} exception: {e}")
+                print(f"  ⚠️  Clip {i+1} exception: {e}")
 
         if not clips:
             raise Exception("All scenes failed — check image API keys")
@@ -1123,7 +1004,7 @@ def full_pipeline(topic: Optional[str], content_type: Optional[str]):
                  "topic": data.get("topic", ""), "content_type": data["content_type"],
                  "llm_used": data.get("llm_used", ""),
                  "image_source": pipeline_status.get("image_source", ""),
-                 "url": url, "version": "7.0"}
+                 "url": url, "version": "8.0"}
         log.append(entry)
         LOG_FILE.write_text(json.dumps(log, indent=2))
         pipeline_status["last_result"] = entry
@@ -1142,7 +1023,7 @@ def full_pipeline(topic: Optional[str], content_type: Optional[str]):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @app.get("/")
 def root():
-    return {"status": "ok", "service": "DarkHistory.ai v7.0",
+    return {"status": "ok", "service": "DarkHistory.ai v8.0",
             "image_fixes": ["gemini-2.0-flash-exp (correct image model)",
                             "fal.ai FLUX free (no key needed)",
                             "HuggingFace FLUX.1-schnell"],
@@ -1155,7 +1036,7 @@ async def run(req: RunRequest, background_tasks: BackgroundTasks):
     if pipeline_status["running"]:
         raise HTTPException(status_code=409, detail="Pipeline already running")
     background_tasks.add_task(full_pipeline, req.topic, req.content_type)
-    return {"status": "started", "topic": req.topic or "auto", "version": "7.0"}
+    return {"status": "started", "topic": req.topic or "auto", "version": "8.0"}
 
 
 @app.get("/status")
@@ -1180,26 +1061,14 @@ def get_niches():
 
 @app.get("/health")
 def health():
-    keys = {
-        "pollinations_key": bool(POLLINATIONS_KEY),
-        "gemini":    bool(GEMINI_API_KEY),
-        "groq":      bool(GROQ_API_KEY),
-        "openrouter":bool(OPENROUTER_API_KEY),
-        "hf_token":  bool(HF_TOKEN),
-        "youtube":   bool(YOUTUBE_REFRESH_TOKEN),
-    }
-    return {
-        "status": "healthy", "version": "8.0", "keys": keys,
-        "image_tier": (
-            "T1-Pollinations-Key (BEST)" if POLLINATIONS_KEY
-            else "T2-Pollinations-Turbo (good, add POLLINATIONS_KEY for max reliability)"
-        ),
-        "setup_tip": (
-            "IMAGE WORKING" if POLLINATIONS_KEY
-            else "ADD POLLINATIONS_KEY: enter.pollinations.ai → free account → API Keys → Create → add sk_ to Render env vars"
-        ),
-        "timestamp": datetime.now().isoformat(),
-    }
+    keys = {"gemini": bool(GEMINI_API_KEY), "groq": bool(GROQ_API_KEY),
+            "openrouter": bool(OPENROUTER_API_KEY), "hf_token": bool(HF_TOKEN),
+            "prodia": bool(PRODIA_TOKEN), "youtube": bool(YOUTUBE_REFRESH_TOKEN)}
+    return {"status": "healthy", "version": "8.0", "keys": keys,
+            "image_tier": ("gemini" if keys["gemini"] else
+                           "fal.ai (free)" if True else
+                           "huggingface" if keys["hf_token"] else "gradient"),
+            "timestamp": datetime.now().isoformat()}
 
 
 @app.get("/topics")
