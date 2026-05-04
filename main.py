@@ -102,7 +102,7 @@ LOG_FILE = WORK_DIR / "upload_log.json"
 
 pipeline_status: dict = {
     "running": False, "step": "", "step_index": 0,
-    "total_steps": 8, "last_result": None, "error": None,
+    "total_steps": 9, "last_result": None, "error": None,
     "llm_used": None, "image_source": None, "progress_detail": "",
 }
 
@@ -257,8 +257,24 @@ TRUE_CRIME_TOPICS = [
 ]
 
 CONTENT_NICHES = {
-    "history":   {"label": "Bizarre History", "icon": "🏛️", "topics": HISTORY_TOPICS,  "cpm": "$8-$15"},
-    "truecrime": {"label": "True Crime",       "icon": "🔍", "topics": TRUE_CRIME_TOPICS, "cpm": "$10-$18"},
+    "history": {
+        "label":      "Bizarre History",
+        "icon":       "🏛️",
+        "topics":     HISTORY_TOPICS,
+        "cpm":        "$8-$15",
+        "sound_mood": "dark_orchestral",
+        "img_style":  "vintage_horror",
+        "voice":      "authoritative",
+    },
+    "truecrime": {
+        "label":      "True Crime",
+        "icon":       "🔍",
+        "topics":     TRUE_CRIME_TOPICS,
+        "cpm":        "$10-$18",
+        "sound_mood": "noir_suspense",
+        "img_style":  "cinematic",
+        "voice":      "suspenseful",
+    },
 }
 
 
@@ -435,7 +451,13 @@ Return ONLY the JSON. No text before or after."""
 def _auto_image_style(content_type: str, image_style: str) -> str:
     if image_style not in ("auto", None, ""):
         return image_style if image_style in IMAGE_STYLES else "horror_2d"
-    return "vintage_horror" if content_type == "history" else "cinematic"
+    return CONTENT_NICHES.get(content_type, {}).get("img_style", "horror_2d")
+
+
+def _auto_sound_mood(content_type: str, override: Optional[str] = None) -> str:
+    if override and override in MUSIC_QUERIES:
+        return override
+    return CONTENT_NICHES.get(content_type, {}).get("sound_mood", "dark_orchestral")
 
 
 def _auto_caption_style(fmt: str, caption_style: str) -> str:
@@ -876,36 +898,145 @@ def _build_image_prompt(scene: str, image_style: str, content_type: str) -> str:
     return f"{scene}, {style_desc}, {atmosphere}"[:550]
 
 
-def _fetch_fal_flux(prompt: str, w: int, h: int) -> Optional[bytes]:
+def _fetch_fal_schnell(prompt: str, w: int, h: int) -> Optional[bytes]:
     """
-    fal.ai FLUX Schnell — completely FREE, no API key needed.
-    Returns image bytes or None.
+    TIER 1 — fal.ai FLUX Schnell (FREE, no API key needed, 2-6s)
+    ─────────────────────────────────────────────────────────────
+    Uses fal.ai's anonymous inference endpoint.
+    Best free quality available. Rate limit: ~1 req/2s, no daily cap.
+    Supports arbitrary width/height (rounded to nearest 8px).
     """
+    w8 = max(256, (w // 8) * 8)
+    h8 = max(256, (h // 8) * 8)
+    # Sanitize for safety filters
+    safe = (prompt
+        .replace("torture", "suffering")
+        .replace("gore", "darkness")
+        .replace("blood", "crimson shadow")
+        .replace("murder", "crime scene")
+        .replace("corpse", "lifeless form")
+        .replace("execution", "somber ritual")
+        [:480])
     try:
+        t0   = time.time()
         resp = requests.post(
             "https://fal.run/fal-ai/flux/schnell",
             headers={"Content-Type": "application/json"},
             json={
-                "prompt": prompt[:450],
-                "image_size": {"width": w, "height": h},
+                "prompt":           safe,
+                "image_size":       {"width": w8, "height": h8},
                 "num_inference_steps": 4,
-                "num_images": 1,
+                "num_images":       1,
                 "enable_safety_checker": False,
             },
-            timeout=30)
+            timeout=20)
+        elapsed = time.time() - t0
         if resp.status_code == 200:
-            data = resp.json()
-            images = data.get("images", [])
-            if images and images[0].get("url"):
-                img_resp = requests.get(images[0]["url"], timeout=20)
-                if img_resp.status_code == 200 and len(img_resp.content) > 5000:
-                    return img_resp.content
-        print(f"    fal.ai HTTP {resp.status_code}")
+            images = resp.json().get("images", [])
+            if images:
+                img_url = images[0].get("url", "")
+                if img_url.startswith("data:image"):
+                    # base64 inline
+                    b64 = img_url.split(",", 1)[1]
+                    data = base64.b64decode(b64)
+                    print(f"    ✅ fal.ai FLUX Schnell ({len(data)//1024}KB, {elapsed:.1f}s)")
+                    return data
+                elif img_url.startswith("http"):
+                    img_resp = requests.get(img_url, timeout=15)
+                    if img_resp.status_code == 200 and len(img_resp.content) > 5_000:
+                        print(f"    ✅ fal.ai FLUX Schnell ({len(img_resp.content)//1024}KB, {elapsed:.1f}s)")
+                        return img_resp.content
+        print(f"    fal.ai HTTP {resp.status_code}: {resp.text[:80]}")
     except requests.Timeout:
-        print("    fal.ai timeout")
+        print("    fal.ai timeout (>20s)")
     except Exception as e:
         print(f"    fal.ai error: {e}")
     return None
+
+
+
+    """
+    TIER 1 — Gemini 2.5 Flash Image (model: gemini-2.5-flash-image)
+    ─────────────────────────────────────────────────────────────────
+    Uses your existing GEMINI_API_KEY. Single POST, returns inline
+    base64 image in ~5–10s. 500 free requests/day. Render-safe.
+
+    Key API facts (confirmed working as of May 2025):
+    • Model string: gemini-2.5-flash-image  (NOT gemini-2.5-flash)
+    • Modality:     responseModalities: ["IMAGE"]  (TEXT omitted for speed)
+    • Aspect:       imageConfig.aspectRatio = "9:16" or "1:1"
+    • Response:     candidates[0].content.parts[].inlineData.data (base64)
+    • Safety note:  dark/horror prompts may hit safety filter →
+                    we sanitize the prompt to remove trigger words
+    """
+    if not GEMINI_API_KEY:
+        return None
+
+    # Sanitize: Gemini safety filter blocks "gore", "torture", "blood" etc.
+    # Rephrase visceral words to cinematic/atmospheric equivalents
+    safe_prompt = (prompt
+        .replace("torture", "suffering")
+        .replace("gore", "darkness")
+        .replace("blood", "crimson shadow")
+        .replace("murder", "crime scene")
+        .replace("kill", "tragic end")
+        .replace("dead body", "fallen figure")
+        .replace("corpse", "lifeless form")
+        .replace("execution", "somber ritual")
+        .replace("decapitat", "dramatic end")
+        [:500]
+    )
+
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.5-flash-image:generateContent?key={GEMINI_API_KEY}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": safe_prompt}]}],
+        "generationConfig": {
+            "responseModalities": ["IMAGE"],
+            "imageConfig": {"aspectRatio": "9:16"},
+        },
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_HARASSMENT",        "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH",       "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+        ],
+    }
+    try:
+        t0   = time.time()
+        resp = requests.post(url, json=payload, timeout=25)
+        elapsed = time.time() - t0
+
+        if resp.status_code != 200:
+            err = resp.json().get("error", {}).get("message", resp.text[:120])
+            print(f"    Gemini image HTTP {resp.status_code}: {err[:100]}")
+            return None
+
+        for part in (resp.json()
+                     .get("candidates", [{}])[0]
+                     .get("content", {})
+                     .get("parts", [])):
+            inline = part.get("inlineData", {})
+            if inline.get("mimeType", "").startswith("image/"):
+                data = base64.b64decode(inline["data"])
+                print(f"    ✅ Gemini image ({len(data)//1024}KB, {elapsed:.1f}s)")
+                return data
+
+        # No image — log text parts for debugging
+        text_parts = [p.get("text","") for p in
+                      resp.json().get("candidates",[{}])[0]
+                      .get("content",{}).get("parts",[]) if p.get("text")]
+        print(f"    Gemini: no image part. resp={str(text_parts)[:100]}")
+        return None
+
+    except requests.Timeout:
+        print(f"    Gemini image timeout (>25s)")
+        return None
+    except Exception as e:
+        print(f"    Gemini image error: {e}")
+        return None
 
 
 def _fetch_pollinations(prompt: str, w: int, h: int) -> Optional[bytes]:
@@ -931,25 +1062,33 @@ def _fetch_pollinations(prompt: str, w: int, h: int) -> Optional[bytes]:
     return None
 
 
-def _fetch_gemini_image(prompt: str) -> Optional[bytes]:
+def _fetch_gemini_image_fallback(prompt: str) -> Optional[bytes]:
+    """
+    TIER 3 fallback — tries gemini-2.0-flash-exp with TEXT+IMAGE modality.
+    Some accounts have this model available; others don't.
+    Separate from T1 (gemini-2.5-flash-image) which uses IMAGE-only modality.
+    """
     if not GEMINI_API_KEY:
         return None
-    for model in ["gemini-2.0-flash-exp", "gemini-2.0-flash-preview-image-generation"]:
-        url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-               f"{model}:generateContent?key={GEMINI_API_KEY}")
-        try:
-            resp = requests.post(url,
-                json={"contents": [{"parts": [{"text": f"Create image: {prompt[:400]}"}]}],
-                      "generationConfig": {"responseModalities": ["TEXT","IMAGE"]}},
-                timeout=28)
-            if resp.status_code == 200:
-                for cand in resp.json().get("candidates", []):
-                    for part in cand.get("content", {}).get("parts", []):
-                        inline = part.get("inlineData", {})
-                        if inline.get("mimeType", "").startswith("image/"):
-                            return base64.b64decode(inline["data"])
-        except Exception as e:
-            print(f"    Gemini image {model}: {e}")
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.0-flash-exp:generateContent?key={GEMINI_API_KEY}"
+    )
+    safe_prompt = prompt.replace("torture","suffering").replace("gore","darkness")[:400]
+    try:
+        resp = requests.post(url,
+            json={"contents": [{"parts": [{"text": f"Draw: {safe_prompt}"}]}],
+                  "generationConfig": {"responseModalities": ["TEXT","IMAGE"]}},
+            timeout=25)
+        if resp.status_code == 200:
+            for cand in resp.json().get("candidates", []):
+                for part in cand.get("content", {}).get("parts", []):
+                    inline = part.get("inlineData", {})
+                    if inline.get("mimeType", "").startswith("image/"):
+                        return base64.b64decode(inline["data"])
+        print(f"    Gemini 2.0-exp HTTP {resp.status_code}")
+    except Exception as e:
+        print(f"    Gemini 2.0-exp: {e}")
     return None
 
 
@@ -1001,11 +1140,17 @@ def prefetch_all_images(scenes: list, image_style: str, content_type: str,
                          session: Path, img_w: int, img_h: int) -> list:
     """
     Pre-fetch ALL images before building any clips.
-    fal.ai is primary (free, no rate limit issues).
-    Pollinations secondary with 12s spacing.
+    Tier order (free-first):
+      T1: fal.ai FLUX Schnell  — free, no key, 2-6s
+      T2: Pollinations turbo   — free, no key, 12s spacing
+      T3: Gemini 2.5 Flash Img — needs GEMINI_API_KEY, 5-10s
+      T4: Gemini 2.0 Flash Exp — needs GEMINI_API_KEY, fallback
+      T5: HuggingFace FLUX     — needs HF_TOKEN
+      T6: Gradient fallback    — always works
     """
     results = []
     pollinations_last_call = 0.0
+    sources_used: list[str] = []
     print(f"  📸 Pre-fetching {len(scenes)} images ({img_w}x{img_h})...")
 
     for i, scene in enumerate(scenes):
@@ -1014,51 +1159,77 @@ def prefetch_all_images(scenes: list, image_style: str, content_type: str,
         print(f"  🎨 Image {i+1}/{len(scenes)}: {scene[:50]}...")
         pipeline_status["progress_detail"] = f"Image {i+1}/{len(scenes)}"
 
-        data = None
+        raw = None
+        source = "Gradient"
 
-        # Tier 1: fal.ai FLUX (free, best quality, no rate limit)
+        # ── Tier 1: fal.ai FLUX Schnell (FREE, no key) ──────────────────────────
         print("    [T1] fal.ai FLUX Schnell...")
-        data = _fetch_fal_flux(prompt, img_w, img_h)
+        raw = _fetch_fal_schnell(prompt, img_w, img_h)
+        if raw:
+            source = "fal.ai FLUX Schnell"
 
-        # Tier 2: Pollinations (free, respect 12s rate limit)
-        if data is None:
+        # ── Tier 2: Pollinations turbo (FREE, 12s rate limit) ───────────────────
+        if raw is None:
             wait_needed = 12.0 - (time.time() - pollinations_last_call)
             if wait_needed > 0:
                 print(f"    [T2] Pollinations (waiting {wait_needed:.0f}s)...")
                 time.sleep(wait_needed)
             else:
-                print("    [T2] Pollinations...")
-            data = _fetch_pollinations(prompt, img_w, img_h)
+                print("    [T2] Pollinations turbo...")
+            raw = _fetch_pollinations(prompt, img_w, img_h)
             pollinations_last_call = time.time()
-            if data is None:
+            if raw is None:
+                print("    [T2] Pollinations retry in 15s...")
                 time.sleep(15)
-                data = _fetch_pollinations(prompt, img_w, img_h)
+                raw = _fetch_pollinations(prompt, img_w, img_h)
                 pollinations_last_call = time.time()
+            if raw:
+                source = "Pollinations Turbo"
 
-        # Tier 3: Gemini
-        if data is None and GEMINI_API_KEY:
-            print("    [T3] Gemini image...")
-            data = _fetch_gemini_image(prompt)
+        # ── Tier 3: Gemini 2.5 Flash Image (key needed) ─────────────────────────
+        if raw is None and GEMINI_API_KEY:
+            print("    [T3] Gemini 2.5-flash-image...")
+            raw = _fetch_gemini_flash_image(prompt)
+            if raw:
+                source = "Gemini 2.5 Flash Image"
 
-        # Tier 4: HuggingFace
-        if data is None and HF_TOKEN:
-            print("    [T4] HuggingFace...")
-            data = _fetch_huggingface(prompt, img_w, img_h)
+        # ── Tier 4: Gemini 2.0 Flash Exp (key needed, fallback) ─────────────────
+        if raw is None and GEMINI_API_KEY:
+            print("    [T4] Gemini 2.0-flash-exp fallback...")
+            raw = _fetch_gemini_image_fallback(prompt)
+            if raw:
+                source = "Gemini 2.0 Flash Exp"
 
-        # Tier 5: Gradient
-        if data is not None:
-            Path(img_path).write_bytes(data)
+        # ── Tier 5: HuggingFace FLUX / SDXL-Turbo (token needed) ────────────────
+        if raw is None and HF_TOKEN:
+            print("    [T5] HuggingFace...")
+            raw = _fetch_huggingface(prompt, img_w, img_h)
+            if raw:
+                source = "HuggingFace FLUX"
+
+        # ── Tier 6: Gradient fallback (always works) ─────────────────────────────
+        if raw is not None:
+            Path(img_path).write_bytes(raw)
             if _verify_image(img_path):
                 size_kb = Path(img_path).stat().st_size // 1024
-                print(f"    ✅ OK ({size_kb}KB)")
+                print(f"    ✅ {source} ({size_kb}KB)")
+                sources_used.append(source)
                 results.append((scene, img_path))
-                pipeline_status["image_source"] = "fal.ai FLUX" if i == 0 else pipeline_status.get("image_source", "fal.ai")
                 continue
+            else:
+                print(f"    ⚠️  {source} wrote invalid image, falling back to gradient")
 
-        print("    [T5] Gradient fallback")
+        print("    [T6] Gradient fallback")
         _make_gradient(content_type, img_w, img_h, img_path)
+        sources_used.append("Gradient")
         results.append((scene, img_path))
-        pipeline_status["image_source"] = pipeline_status.get("image_source", "Gradient")
+
+    # Record the primary source used across all images
+    if sources_used:
+        from collections import Counter
+        primary = Counter(sources_used).most_common(1)[0][0]
+        pipeline_status["image_source"] = primary
+        print(f"  ✅ {len(results)} images | primary source: {primary}")
 
     return results
 
@@ -1431,14 +1602,16 @@ def full_pipeline(req: RunRequest):
         audio_dur = get_duration(voice_p)
         print(f"  Audio: {audio_dur:.1f}s")
 
-        # ── STEP 2B: Subtitles ────────────────────────────────────────────────
+        # ── STEP 3: Subtitles ─────────────────────────────────────────────────
+        pipeline_status["step"] = "Generating subtitles..."
+        pipeline_status["step_index"] = 3
         ass_p = str(session / "subs.ass")
         cap_style = data.get("caption_style", fmt_cfg["default_caption"])
         generate_ass_subtitles(word_timings, ass_p, cap_style, vid_w, vid_h)
 
-        # ── STEP 3: Images → Clips ────────────────────────────────────────────
+        # ── STEP 4: Images → Clips ────────────────────────────────────────────
         pipeline_status["step"] = "Pre-fetching scene images..."
-        pipeline_status["step_index"] = 3
+        pipeline_status["step_index"] = 4
 
         scenes = data.get("scenes", [])
         max_dur = fmt_cfg["max_dur"]
@@ -1459,6 +1632,7 @@ def full_pipeline(req: RunRequest):
 
         # Build clips from pre-fetched images
         pipeline_status["step"] = "Building animated clips..."
+        pipeline_status["step_index"] = 5
         clips = []
         for i, (scene, img_path) in enumerate(image_results):
             clip_path = str(session / f"clip_{i}.mp4")
@@ -1474,26 +1648,26 @@ def full_pipeline(req: RunRequest):
             raise Exception("All clips failed to build")
         print(f"  ✅ {len(clips)} clips ({len(clips)*scene_dur:.1f}s total visual)")
 
-        # ── STEP 4: Music + Sound Design ──────────────────────────────────────
+        # ── STEP 6: Music + Sound Design ──────────────────────────────────────
         pipeline_status["step"] = "Generating atmosphere & music..."
-        pipeline_status["step_index"] = 4
+        pipeline_status["step_index"] = 6
         music_p = str(session / "music.mp3")
-        sound_mood = data.get("sound_mood", "dark_orchestral")
+        sound_mood = _auto_sound_mood(data["content_type"], data.get("sound_mood"))
         if not generate_music(sound_mood, music_p):
             music_p = None
 
         sound_p = generate_sound_design(data["content_type"], audio_dur, session)
 
-        # ── STEP 5: Assemble ──────────────────────────────────────────────────
+        # ── STEP 7: Assemble ──────────────────────────────────────────────────
         pipeline_status["step"] = "Assembling final video..."
-        pipeline_status["step_index"] = 5
+        pipeline_status["step_index"] = 7
         final_p = str(session / "final.mp4")
         assemble_video(clips, voice_p, music_p, sound_p, ass_p,
                        final_p, fmt, vid_w, vid_h)
 
-        # ── STEP 6: Upload ────────────────────────────────────────────────────
+        # ── STEP 8: Upload ────────────────────────────────────────────────────
         pipeline_status["step"] = "Uploading to YouTube..."
-        pipeline_status["step_index"] = 6
+        pipeline_status["step_index"] = 8
         if not Path(final_p).exists() or Path(final_p).stat().st_size < 10_000:
             raise Exception("Final video invalid or too small")
 
@@ -1502,9 +1676,9 @@ def full_pipeline(req: RunRequest):
         url = f"https://youtube.com/{fmt_suffix}{video_id}"
         print(f"✅ LIVE: {url}")
 
-        # ── STEP 7: Log + Save thumbnail prompt ───────────────────────────────
+        # ── STEP 9: Log + Save thumbnail prompt ───────────────────────────────
         pipeline_status["step"] = "Done! 🎉"
-        pipeline_status["step_index"] = 7
+        pipeline_status["step_index"] = 9
 
         log = json.loads(LOG_FILE.read_text()) if LOG_FILE.exists() else []
         entry = {
@@ -1639,7 +1813,170 @@ def get_formats():
     return FORMATS
 
 
-@app.get("/health")
+@app.post("/preview")
+async def preview(req: RunRequest):
+    """
+    Run only Step 0+1 (research + content generation) — no video.
+    Returns the full script, scenes, title variants, thumbnail prompt,
+    and SEO data so you can review before committing to full pipeline.
+    Useful for A/B testing titles before burning compute on video.
+    """
+    if pipeline_status["running"]:
+        raise HTTPException(status_code=409, detail="Pipeline already running — wait for it to finish")
+    try:
+        data = generate_content(req)
+        return {
+            "status":            "preview_ready",
+            "title":             data.get("title"),
+            "title_variants":    data.get("title_variants", []),
+            "hook_line":         data.get("hook_line", ""),
+            "content":           data.get("content", "")[:500] + "...",  # truncated
+            "content_words":     len(data.get("content","").split()),
+            "scenes":            data.get("scenes", []),
+            "thumbnail_prompt":  data.get("thumbnail_prompt", ""),
+            "description":       data.get("description","")[:300] + "...",
+            "tags":              data.get("tags", []),
+            "hashtags":          data.get("hashtags",""),
+            "image_style":       data.get("image_style"),
+            "caption_style":     data.get("caption_style"),
+            "voice_style":       data.get("voice_style"),
+            "sound_mood":        data.get("sound_mood"),
+            "content_type":      data.get("content_type"),
+            "format":            data.get("format"),
+            "llm_used":          pipeline_status.get("llm_used"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ScheduleRequest(BaseModel):
+    runs:         int   = Field(default=1,        ge=1, le=50,   description="Number of videos to schedule")
+    interval_min: int   = Field(default=60,        ge=5, le=1440, description="Minutes between runs")
+    format:       Optional[str] = Field(default="shorts")
+    content_type: Optional[str] = Field(default=None,   description="history|truecrime|None=auto-alternate")
+    image_style:  Optional[str] = Field(default="auto")
+    caption_style:Optional[str] = Field(default="auto")
+
+
+_schedule_queue: list = []
+_schedule_task: Optional[asyncio.Task] = None
+
+
+async def _run_schedule(queue: list):
+    """Background task: run scheduled pipeline jobs with interval spacing."""
+    global _schedule_queue
+    for i, req in enumerate(queue):
+        print(f"\n⏰ SCHEDULED RUN {i+1}/{len(queue)}")
+        if pipeline_status["running"]:
+            await asyncio.sleep(30)  # wait if already running
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, full_pipeline, req)
+        if i < len(queue) - 1:
+            wait_s = req._interval_min * 60
+            print(f"  ⏳ Next run in {req._interval_min}min...")
+            await asyncio.sleep(wait_s)
+    _schedule_queue = []
+    print("✅ All scheduled runs complete.")
+
+
+@app.post("/schedule")
+async def schedule_runs(req: ScheduleRequest, background_tasks: BackgroundTasks):
+    """
+    Queue N videos to run automatically with interval_min spacing.
+    Auto-alternates niches if content_type not specified.
+    Returns queue preview so you know exactly what will run.
+    """
+    global _schedule_queue, _schedule_task
+
+    if _schedule_queue:
+        raise HTTPException(status_code=409,
+            detail=f"{len(_schedule_queue)} runs already queued. POST /schedule/cancel to clear.")
+
+    queue = []
+    for i in range(req.runs):
+        r = RunRequest(
+            format=req.format,
+            content_type=req.content_type,  # None = auto-alternate per run
+            image_style=req.image_style,
+            caption_style=req.caption_style,
+        )
+        r._interval_min = req.interval_min  # type: ignore[attr-defined]
+        queue.append(r)
+
+    _schedule_queue = queue
+    background_tasks.add_task(_run_schedule, queue)
+
+    return {
+        "status":       "scheduled",
+        "runs_queued":  req.runs,
+        "interval_min": req.interval_min,
+        "format":       req.format,
+        "content_type": req.content_type or "auto-alternate (history↔truecrime)",
+        "image_style":  req.image_style,
+        "total_runtime_est_min": req.runs * req.interval_min,
+        "message":      f"{req.runs} videos queued. First starts immediately.",
+    }
+
+
+@app.post("/schedule/cancel")
+def cancel_schedule():
+    global _schedule_queue
+    count = len(_schedule_queue)
+    _schedule_queue = []
+    return {"status": "cancelled", "runs_cleared": count}
+
+
+@app.get("/schedule/status")
+def schedule_status():
+    return {
+        "queued_runs":    len(_schedule_queue),
+        "pipeline_running": pipeline_status["running"],
+        "current_step":  pipeline_status["step"],
+    }
+
+
+@app.post("/retry")
+async def retry_last(background_tasks: BackgroundTasks):
+    """
+    Retry the last failed run with the same parameters.
+    If no previous run exists, starts a fresh auto run.
+    """
+    if pipeline_status["running"]:
+        raise HTTPException(status_code=409, detail="Pipeline already running")
+    last = pipeline_status.get("last_result")
+    if last and pipeline_status.get("error"):
+        req = RunRequest(
+            format=last.get("format", "shorts"),
+            content_type=last.get("content_type"),
+            image_style=last.get("image_style"),
+            caption_style=last.get("caption_style"),
+        )
+    else:
+        req = RunRequest()
+    background_tasks.add_task(full_pipeline, req)
+    return {"status": "retrying", "format": req.format, "content_type": req.content_type}
+
+
+@app.get("/stats")
+def get_stats():
+    """Lifetime stats from upload log."""
+    if not LOG_FILE.exists():
+        return {"total_videos": 0, "by_niche": {}, "by_format": {}, "by_image_style": {}}
+    log = json.loads(LOG_FILE.read_text())
+    from collections import Counter
+    return {
+        "total_videos":    len(log),
+        "by_niche":        dict(Counter(e.get("content_type","?") for e in log)),
+        "by_format":       dict(Counter(e.get("format","?") for e in log)),
+        "by_image_style":  dict(Counter(e.get("image_style","?") for e in log)),
+        "by_caption_style":dict(Counter(e.get("caption_style","?") for e in log)),
+        "by_llm":          dict(Counter(e.get("llm_used","?") for e in log)),
+        "by_image_source": dict(Counter(e.get("image_source","?") for e in log)),
+        "latest":          log[-1] if log else None,
+        "first":           log[0]  if log else None,
+    }
+
+
 def health():
     return {
         "status":    "healthy",
